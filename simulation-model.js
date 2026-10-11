@@ -22,6 +22,15 @@ export function validate(s){
         if(!i.annualValues||typeof i.annualValues!=='object'||Array.isArray(i.annualValues)||Object.keys(i.annualValues).length>301)throw Error('年別金額の形式を確認してください');
         for(const [y,n] of Object.entries(i.annualValues))if(!/^\d{4}$/.test(y)||!year(Number(y))||!money(n))throw Error('年別金額は0〜1兆円の整数で入力してください');
       }
+      if(i.breakdown!==undefined){
+        if(i.kind!=='expense'||!Array.isArray(i.breakdown)||i.breakdown.length>100)throw Error('支出内訳の形式を確認してください');
+        const lineIds=new Set();
+        for(const line of i.breakdown){
+          if(typeof line.id!=='string'||!line.id||lineIds.has(line.id)||typeof line.name!=='string'||!line.name.trim()||line.name.length>80)throw Error('支出内訳の名前を確認してください');lineIds.add(line.id);
+          if(!money(line.amount)||!year(line.start)||!year(line.end)||line.end<line.start||!finite(line.growth,-100,100))throw Error('支出内訳の金額・期間・増減率を確認してください');
+          if(line.annualValues!==undefined){if(!line.annualValues||typeof line.annualValues!=='object'||Array.isArray(line.annualValues)||Object.keys(line.annualValues).length>301)throw Error('支出内訳の年別金額を確認してください');for(const[y,n]of Object.entries(line.annualValues))if(!/^\d{4}$/.test(y)||!year(Number(y))||!money(n))throw Error('支出内訳は0〜1兆円の整数で入力してください');}
+        }
+      }
     }
   }
   if(new TextEncoder().encode(JSON.stringify(s)).length>650000)throw Error('保存できる容量を超えています');
@@ -29,11 +38,23 @@ export function validate(s){
 }
 export function annualAmount(item,year){
   if(!item.enabled)return 0;
+  if(Array.isArray(item.breakdown)){
+    const total=item.breakdown.reduce((sum,line)=>sum+annualComponentAmount(line,year),0);
+    if(!Number.isSafeInteger(total)||total>1e12)throw Error('支出の内訳合計が上限を超えています');
+    return total;
+  }
   if(item.annualValues&&Object.hasOwn(item.annualValues,year))return item.annualValues[year];
   if(year<item.start||year>item.end)return 0;
   const n=item.amount*(item.frequency==='monthly'?12:1)*Math.pow(1+item.growth/100,year-item.start);
   if(!Number.isFinite(n)||n>Number.MAX_SAFE_INTEGER)throw Error('増減率または金額が大きすぎます');
   return Math.round(n);
+}
+export function annualComponentAmount(line,year){
+  if(line.annualValues&&Object.hasOwn(line.annualValues,year))return line.annualValues[year];
+  if(year<line.start||year>line.end)return 0;
+  const amount=line.amount*Math.pow(1+line.growth/100,year-line.start);
+  if(!Number.isFinite(amount)||amount>Number.MAX_SAFE_INTEGER)throw Error('内訳の金額または増減率が大きすぎます');
+  return Math.round(amount);
 }
 export function parseAnnualValue(text,scale=10000){
   const value=String(text).normalize('NFKC').replace(/[,\s]/g,'');

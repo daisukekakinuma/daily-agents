@@ -1,4 +1,4 @@
-import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=annual-1';
+import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=breakdown-1';
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
@@ -10,7 +10,7 @@ export function moveItem(items,id,targetId,after=false){
   items.splice(at,0,item);
   return true;
 }
-export function createAnnualGrid({getPlan,update,openItem,onYear,markPending}){
+export function createAnnualGrid({getPlan,update,openItem,openBreakdown,onYear,onUnitChange=()=>{},markPending}){
   let signature='',selected=null;
   const scale=()=>Number($('gridUnit').value);
   const fmt=n=>(n/scale()).toLocaleString('ja-JP',{maximumFractionDigits:scale()===1?0:4});
@@ -19,11 +19,11 @@ export function createAnnualGrid({getPlan,update,openItem,onYear,markPending}){
   function render(rows){
     const p=getPlan(),years=rows.map(r=>r.year),unit=scale()===10000?'万円':'円';
     if(selected?.plan!==p.id||!p.items.some(i=>i.id===selected?.id&&i.enabled)||!years.includes(selected?.year)){selected=null;$('gridSelection').textContent='金額のセルを選ぶと、右の年へまとめてコピーできます。';$('fillRight').disabled=true;$('resetCell').disabled=true;}
-    const key=JSON.stringify([p.id,p.startYear,p.endYear,scale(),p.items.map(i=>[i.id,i.name,i.category,i.kind,i.enabled])]);
+    const key=JSON.stringify([p.id,p.startYear,p.endYear,scale(),p.items.map(i=>[i.id,i.name,i.category,i.kind,i.enabled,Array.isArray(i.breakdown)])]);
     if(signature!==key){
       signature=key;
       const values=(key,label,cls='')=>`<tr class="grid-total ${cls}"><th scope="row">${label}</th>${years.map(y=>`<td data-result="${key}" data-year="${y}"></td>`).join('')}</tr>`;
-      const section=(kind,title)=>`<tr class="grid-section ${kind}"><th scope="row">${title}</th>${years.map(()=>'<td></td>').join('')}</tr>`+p.items.filter(i=>i.kind===kind).map(i=>`<tr class="grid-item ${kind} ${i.enabled?'':'is-disabled'}" data-row-id="${esc(i.id)}"><th scope="row"><div class="grid-rowhead"><button type="button" class="grid-drag" data-drag-id="${esc(i.id)}" aria-label="${esc(i.name)}の順番を変更" title="ドラッグして並べ替え。上下キーでも移動できます">⠿</button><input type="checkbox" data-grid-enable="${esc(i.id)}" aria-label="${esc(i.name)}を年別表で有効にする" ${i.enabled?'checked':''}><input data-row-name="${esc(i.id)}" aria-label="項目名 ${esc(i.name)}" value="${esc(i.name)}" maxlength="80" required><button type="button" data-detail="${esc(i.id)}" aria-label="${esc(i.name)}の詳細設定">設定</button></div><span class="grid-category">${esc(i.category)}</span></th>${years.map(y=>`<td><input type="text" inputmode="decimal" autocomplete="off" data-item="${esc(i.id)}" data-year="${y}" aria-label="${esc(i.name)} ${y}年 年額（${unit}）" ${i.enabled?'':'disabled'}></td>`).join('')}</tr>`).join('')+values(kind,title+' 合計',kind);
+      const section=(kind,title)=>`<tr class="grid-section ${kind}"><th scope="row">${title}</th>${years.map(()=>'<td></td>').join('')}</tr>`+p.items.filter(i=>i.kind===kind).map(i=>`<tr class="grid-item ${kind} ${i.enabled?'':'is-disabled'}" data-row-id="${esc(i.id)}"><th scope="row"><div class="grid-rowhead"><button type="button" class="grid-drag" data-drag-id="${esc(i.id)}" aria-label="${esc(i.name)}の順番を変更" title="ドラッグして並べ替え。上下キーでも移動できます">⠿</button><input type="checkbox" data-grid-enable="${esc(i.id)}" aria-label="${esc(i.name)}を年別表で有効にする" ${i.enabled?'checked':''}><input data-row-name="${esc(i.id)}" aria-label="項目名 ${esc(i.name)}" value="${esc(i.name)}" maxlength="80" required>${i.kind==='expense'?`<button type="button" data-breakdown="${esc(i.id)}" aria-label="${esc(i.name)}の内訳を管理">内訳</button>`:''}<button type="button" data-detail="${esc(i.id)}" aria-label="${esc(i.name)}の詳細設定">設定</button></div><span class="grid-category">${esc(i.category)}</span></th>${years.map(y=>`<td><input type="text" inputmode="decimal" autocomplete="off" data-item="${esc(i.id)}" data-year="${y}" aria-label="${esc(i.name)} ${y}年 年額（${unit}）" ${i.enabled&&!i.breakdown?'':'disabled'} ${i.breakdown?'class="calculated-value" title="支出内訳の合計です。内訳画面で金額を編集してください。"':''}></td>`).join('')}</tr>`).join('')+values(kind,title+' 合計',kind);
       $('annualTable').innerHTML=`<thead><tr><th scope="col">項目 ／ 年額（${unit}）</th>${years.map(y=>`<th scope="col"><button type="button" data-focus-year="${y}" aria-label="${y}年の資産を見る">${y}<small>${y-p.startYear+1}年目</small></button></th>`).join('')}</tr></thead><tbody>${section('income','収入')}${section('expense','支出')}${values('net','年間収支')}${values('contribution','投資に回す額')}${values('cash','年末の現金')}${values('investments','年末の運用資産')}${values('total','年末の総資産','asset-total')}${values('unfunded','未充足額（資金不足）','shortfall')}</tbody>`;
     }
     const itemMap=new Map(p.items.map(i=>[i.id,i])),rowMap=new Map(rows.map(r=>[r.year,r]));
@@ -88,8 +88,8 @@ export function createAnnualGrid({getPlan,update,openItem,onYear,markPending}){
   });
   $('annualTable').addEventListener('pointerup',e=>{if(!dragging||dragging.pointerId!==e.pointerId)return;const {id,target,after}=dragging;clearDrag();if(!target)return;try{update(p=>moveItem(p.items,id,target,after));$('gridStatus').textContent=`${getPlan().items.find(i=>i.id===id).name}の順番を変更しました。最後に「変更を保存」を押してください。`;$('gridStatus').className='muted';}catch(err){error(err);}});
   $('annualTable').addEventListener('pointercancel',clearDrag);
-  $('annualTable').onclick=e=>{const b=e.target.closest('button');if(b?.dataset.detail)openItem('',b.dataset.detail);if(b?.dataset.focusYear)onYear(Number(b.dataset.focusYear));};
-  $('gridUnit').onchange=()=>{signature='';render(simulate(getPlan()));};
+  $('annualTable').onclick=e=>{const b=e.target.closest('button');if(b?.dataset.detail)openItem('',b.dataset.detail);if(b?.dataset.breakdown)openBreakdown(b.dataset.breakdown);if(b?.dataset.focusYear)onYear(Number(b.dataset.focusYear));};
+  $('gridUnit').onchange=()=>{signature='';render(simulate(getPlan()));onUnitChange();};
   $('fillRight').onclick=()=>{if(!selected)return;const {id,year}=selected,p=getPlan(),i=p.items.find(i=>i.id===id);if(!i?.enabled)return;if(!confirm(`${i.name}の${year}年の金額を、${p.endYear}年までコピーします。既存の年別金額は上書きされます。`))return;try{const amount=annualAmount(i,year);update(p=>{const i=p.items.find(i=>i.id===id);i.annualValues??={};for(let y=year;y<=p.endYear;y++)i.annualValues[y]=amount;});$('gridStatus').textContent='選択した年以降にコピーしました。変更を保存してください。';$('gridStatus').className='muted';}catch(e){error(e);}};
   $('resetCell').onclick=()=>{if(!selected)return;try{update(p=>{const i=p.items.find(i=>i.id===selected.id);if(i?.annualValues)delete i.annualValues[selected.year];});$('gridStatus').textContent='選択した年を基本設定の金額に戻しました。';$('gridStatus').className='muted';}catch(e){error(e);}};
   function add(kind,name){const id=crypto.randomUUID();update(p=>p.items.push({id,kind,category:kind==='income'?'収入':'支出',name,amount:0,frequency:'annual',start:p.startYear,end:p.endYear,growth:0,enabled:true,annualValues:{}}));const input=[...$('annualTable').querySelectorAll('[data-row-name]')].find(i=>i.dataset.rowName===id);input?.focus();input?.select();}
