@@ -1,4 +1,4 @@
-import {createAnnualGrid} from './simulation-grid.js?v=annual-1';
+import {createAnnualGrid} from './simulation-grid.js?v=annual-2';
 import {emptyState,validate,simulate,annualAmount,sampleState} from './simulation-model.js?v=annual-1';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP'),unit={monthly:'月',annual:'年',once:'単発'};

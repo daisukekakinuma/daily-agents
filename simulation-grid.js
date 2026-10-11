@@ -1,4 +1,4 @@
-import {annualAmount,applyAnnualBlock,simulate} from './simulation-model.js?v=annual-1';
+import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=annual-1';
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
@@ -32,7 +32,18 @@ export function createAnnualGrid({getPlan,update,openItem,onYear,markPending}){
   function commitCell(e){
     const input=e.target;if(!input.isConnected)return;
     try{
-      if(input.dataset.item){const id=input.dataset.item,y=Number(input.dataset.year),text=input.value;update(p=>applyAnnualBlock(p,id,y,text,scale()));input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===id),y));$('gridStatus').textContent='年別の金額を反映しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';}
+      if(input.dataset.item){
+        const id=input.dataset.item,y=Number(input.dataset.year),text=input.value;
+        const previous=annualAmount(getPlan().items.find(i=>i.id===id),y),amount=parseAnnualValue(text,scale());
+        update(p=>applyAnnualBlock(p,id,y,text,scale()));
+        input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===id),y));
+        let copied=false;
+        const p=getPlan(),item=p.items.find(i=>i.id===id);
+        if(amount!==null&&amount!==previous&&y<p.endYear&&confirm(`${item.name}：${y}年を${amount.toLocaleString('ja-JP')}円に変更しました。\n翌年（${y+1}年）から${p.endYear}年まで、すべて同じ金額に変更しますか？\n\nOK：翌年以降の金額も上書きする\nキャンセル：${y}年だけ変更する`)){
+          update(p=>{const i=p.items.find(i=>i.id===id);i.annualValues??={};for(let year=y+1;year<=p.endYear;year++)i.annualValues[year]=amount;});copied=true;
+        }
+        $('gridStatus').textContent=copied?`${y}年から${p.endYear}年まで同じ金額に変更しました。最後に「変更を保存」を押してください。`:`${y}年の金額を反映しました。最後に「変更を保存」を押してください。`;$('gridStatus').className='muted';
+      }
       else if(input.dataset.rowName){const name=input.value.trim();if(getPlan().items.find(i=>i.id===input.dataset.rowName)?.name===name)return;if(!name)throw Error('項目名を入力してください');update(p=>p.items.find(i=>i.id===input.dataset.rowName).name=name);}
       else if(input.dataset.gridEnable)update(p=>p.items.find(i=>i.id===input.dataset.gridEnable).enabled=input.checked);
     }catch(err){error(err);if(input.dataset.item)input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===input.dataset.item),Number(input.dataset.year)));else if(input.dataset.rowName)input.value=getPlan().items.find(i=>i.id===input.dataset.rowName).name;else if(input.dataset.gridEnable)input.checked=!input.checked;}
