@@ -18,16 +18,42 @@ export function validate(s){
     for(const i of p.items){
       if(typeof i.id!=='string'||!i.id||itemIds.has(i.id)||!['income','expense'].includes(i.kind)||typeof i.category!=='string'||!i.category.trim()||i.category.length>60||typeof i.name!=='string'||!i.name.trim()||i.name.length>80||typeof i.enabled!=='boolean')throw Error('項目の名前・分類を確認してください');itemIds.add(i.id);
       if(!money(i.amount)||!['monthly','annual','once'].includes(i.frequency)||!year(i.start)||!year(i.end)||i.end<i.start||!finite(i.growth,-100,100)||(i.frequency==='once'&&i.start!==i.end))throw Error('項目の金額・期間・増減率を確認してください');
+      if(i.annualValues!==undefined){
+        if(!i.annualValues||typeof i.annualValues!=='object'||Array.isArray(i.annualValues)||Object.keys(i.annualValues).length>301)throw Error('年別金額の形式を確認してください');
+        for(const [y,n] of Object.entries(i.annualValues))if(!/^\d{4}$/.test(y)||!year(Number(y))||!money(n))throw Error('年別金額は0〜1兆円の整数で入力してください');
+      }
     }
   }
   if(new TextEncoder().encode(JSON.stringify(s)).length>650000)throw Error('保存できる容量を超えています');
   return s;
 }
 export function annualAmount(item,year){
-  if(!item.enabled||year<item.start||year>item.end)return 0;
+  if(!item.enabled)return 0;
+  if(item.annualValues&&Object.hasOwn(item.annualValues,year))return item.annualValues[year];
+  if(year<item.start||year>item.end)return 0;
   const n=item.amount*(item.frequency==='monthly'?12:1)*Math.pow(1+item.growth/100,year-item.start);
   if(!Number.isFinite(n)||n>Number.MAX_SAFE_INTEGER)throw Error('増減率または金額が大きすぎます');
   return Math.round(n);
+}
+export function parseAnnualValue(text,scale=10000){
+  const value=String(text).normalize('NFKC').replace(/[,\s]/g,'');
+  if(value==='')return null;
+  if(![1,10000].includes(scale)||!/^\d+(\.\d+)?$/.test(value))throw Error('金額は0以上の数字で入力してください（数式は使えません）');
+  const n=Number(value)*scale,rounded=Math.round(n);
+  if(!money(rounded)||Math.abs(n-rounded)>0.00001)throw Error('1円単位、1兆円以下で入力してください');
+  return rounded;
+}
+// Spreadsheet paste is applied to the supplied draft; callers validate before committing.
+export function applyAnnualBlock(plan,id,startYear,text,scale=10000){
+  const startItem=plan.items.find(i=>i.id===id);
+  if(!startItem||!startItem.enabled)throw Error('有効な収支項目を選んでください');
+  const items=plan.items.filter(i=>i.kind===startItem.kind),index=items.findIndex(i=>i.id===id);
+  const lines=String(text).replace(/\r\n?/g,'\n').replace(/\n$/,'').split('\n').map(line=>line.split('\t'));
+  if(!Number.isInteger(startYear)||startYear<plan.startYear||startYear>plan.endYear||lines.length+index>items.length||lines.some(line=>startYear+line.length-1>plan.endYear))throw Error('貼り付ける範囲が表を超えています。先に項目や試算期間を増やしてください');
+  const edits=[];
+  lines.forEach((line,row)=>line.forEach((value,col)=>{if(!items[index+row].enabled)throw Error('無効な項目が含まれています。項目を有効にしてから貼り付けてください');edits.push([items[index+row],startYear+col,parseAnnualValue(value,scale)]);}));
+  for(const [item,y,n] of edits){item.annualValues??={};if(n===null)delete item.annualValues[y];else item.annualValues[y]=n;}
+  return edits.length;
 }
 export function simulate(p,rate=p.rate){
   validate({version:1,revision:0,plans:[{...p,rate}]});

@@ -1,11 +1,13 @@
-import {emptyState,validate,simulate,annualAmount,sampleState} from './simulation-model.js';
+import {createAnnualGrid} from './simulation-grid.js?v=annual-1';
+import {emptyState,validate,simulate,annualAmount,sampleState} from './simulation-model.js?v=annual-1';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP'),unit={monthly:'月',annual:'年',once:'単発'};
-let state=emptyState(),selected=state.plans[0].id,latest=null,ready=false,dirty=false,busy=false,demo=false,cloud,editing=null,userId=null,settingsDirty=false,assetsDirty=false;
+let state=emptyState(),selected=state.plans[0].id,latest=null,ready=false,dirty=false,busy=false,demo=false,cloud,editing=null,editingAnnualValues,userId=null,settingsDirty=false,assetsDirty=false;
 const hasDraft=()=>settingsDirty||assetsDirty;
 const current=()=>state.plans.find(p=>p.id===selected)||state.plans[0];
+const annualGrid=createAnnualGrid({getPlan:current,update:updatePlan,openItem,markPending:changed,onYear:y=>{$('focusYear').value=y;render();$('focusLabel').scrollIntoView({behavior:'smooth',block:'center'});}});
 function status(s,error=false){$('status').textContent=s;$('status').className=error?'error':'';}
-function controls(){$('workspace').disabled=!ready||busy;$('save').disabled=!ready||busy||demo||!dirty;$('logout').disabled=busy;}
+function controls(){$('workspace').disabled=!ready||busy;$('save').disabled=!ready||busy||demo||!dirty;$('logout').disabled=busy;$('saveGrid').disabled=$('save').disabled;}
 function changed(){dirty=true;controls();status(demo?'サンプルを変更しました（保存されません）':'未保存の変更があります。「変更を保存」で記録できます。');}
 function download(content,name,type){const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 function validNext(next){validate(next);next.plans.forEach(p=>simulate(p));return next;}
@@ -47,10 +49,11 @@ function render(){
   const categories=new Map();for(const i of p.items.filter(i=>i.kind==='expense'))categories.set(i.category,(categories.get(i.category)||0)+annualAmount(i,r.year));
   $('categoryTotals').innerHTML=[...categories].map(([name,n])=>`<span>${esc(name)} ${yen(n)} / 年</span>`).join('');
   $('yearRows').innerHTML=rows.map(r=>`<tr><td>${r.year}</td>${['income','expense','net','contribution','gain','withdrawal','cash','investments','total','unfunded'].map(k=>`<td class="${(k==='unfunded'&&r[k]>0)||r[k]<0?'down':''}">${yen(r[k])}</td>`).join('')}</tr>`).join('');
+  annualGrid.render(rows);
   $('deletePlan').disabled=state.plans.length===1;$('duplicate').disabled=state.plans.length>=12;
 }
 function openItem(kind,id,copy=false){
-  const p=current(),existing=p.items.find(i=>i.id===id);editing=copy?null:existing?.id;
+  const p=current(),existing=p.items.find(i=>i.id===id);editing=copy?null:existing?.id;editingAnnualValues=existing?.annualValues?structuredClone(existing.annualValues):undefined;
   const item=existing?{...existing,name:existing.name+(copy?'（複製）':'')}:{kind,category:kind==='income'?'給与':'基本生活費',name:'',amount:0,frequency:'monthly',start:p.startYear,end:p.endYear,growth:0};
   for(const el of $('itemForm').elements)if(el.name)el.value=item[el.name];
   $('categories').innerHTML=[...new Set(['基本生活費','住居費','通信費','医療費','教育費','自動車','子供の生活費','娯楽費','税・社会保険','その他','給与','年金','児童手当',...p.items.map(i=>i.category)])].map(c=>`<option value="${esc(c)}"></option>`).join('');
@@ -58,7 +61,7 @@ function openItem(kind,id,copy=false){
 }
 function setFrequency(){const f=$('itemForm').elements;f.end.disabled=f.frequency.value==='once';if(f.end.disabled)f.end.value=f.start.value;}
 $('itemForm').elements.frequency.onchange=setFrequency;$('itemForm').elements.start.onchange=setFrequency;
-$('itemForm').onsubmit=e=>{e.preventDefault();try{const f=$('itemForm').elements,item={id:editing||crypto.randomUUID(),enabled:editing?current().items.find(i=>i.id===editing).enabled:true};for(const k of ['kind','category','name','frequency'])item[k]=f[k].value.trim();for(const k of ['amount','start','end','growth'])item[k]=Number(f[k].value);if(item.frequency==='once')item.end=item.start;updatePlan(p=>{if(editing)p.items[p.items.findIndex(i=>i.id===editing)]=item;else p.items.push(item);});$('modal').close();}catch(e){$('itemError').textContent=e.message;}};
+$('itemForm').onsubmit=e=>{e.preventDefault();try{const f=$('itemForm').elements,item={id:editing||crypto.randomUUID(),enabled:editing?current().items.find(i=>i.id===editing).enabled:true};for(const k of ['kind','category','name','frequency'])item[k]=f[k].value.trim();for(const k of ['amount','start','end','growth'])item[k]=Number(f[k].value);if(item.frequency==='once')item.end=item.start;if(editingAnnualValues)item.annualValues=editingAnnualValues;updatePlan(p=>{if(editing)p.items[p.items.findIndex(i=>i.id===editing)]=item;else p.items.push(item);});$('modal').close();}catch(e){$('itemError').textContent=e.message;}};
 $('close').onclick=()=>$('modal').close();$('addIncome').onclick=()=>openItem('income');$('addExpense').onclick=()=>openItem('expense');
 $('itemRows').onclick=e=>{const b=e.target.closest('button');if(!b)return;try{if(b.dataset.edit)openItem('',b.dataset.edit);if(b.dataset.copy)openItem('',b.dataset.copy,true);if(b.dataset.delete&&confirm('この収支項目を削除しますか？'))updatePlan(p=>p.items=p.items.filter(i=>i.id!==b.dataset.delete));}catch(e){status(e.message,true);}};
 $('itemRows').onchange=e=>{if(e.target.dataset.enable)try{updatePlan(p=>p.items.find(i=>i.id===e.target.dataset.enable).enabled=e.target.checked);}catch(err){status(err.message,true);render();}};
@@ -73,6 +76,7 @@ $('duplicate').onclick=()=>{if(hasDraft()){status('先に入力中の資産・�
 $('deletePlan').onclick=()=>{if(state.plans.length<2||!confirm('このプランを削除しますか？'))return;state.plans=state.plans.filter(p=>p.id!==selected);selected=state.plans[0].id;changed();renderSettings();render();};
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{for(const x of document.querySelectorAll('[data-tab]')){const active=x===b;x.setAttribute('aria-pressed',String(active));$(x.dataset.tab).hidden=!active;}});
 $('save').onclick=async()=>{if(!ready||busy||demo)return;if(hasDraft()){status('資産・運用条件に未反映の入力があります。それぞれの「反映」ボタンを押してください。',true);return;}busy=true;controls();const uid=userId,next=structuredClone(state);status('保存しています…');try{await cloud.save(next,next.revision);if(userId!==uid)return;next.revision++;state=next;dirty=false;if(latest&&latest.revision>state.revision)state=structuredClone(latest);status('保存しました。ほかの端末でも同じ設定を確認できます。');render();}catch(e){status('保存できませんでした。'+e.message,true);}finally{busy=false;controls();}};
+$('saveGrid').onclick=()=>$('save').click();
 $('reload').onclick=()=>{if(demo){status('サンプルには保存内容がありません。');return;}if(!latest)return;if((dirty||hasDraft())&&!confirm('未保存の変更を破棄して、最新の保存内容を読み込みますか？'))return;state=structuredClone(latest);dirty=false;renderSettings();render();status('保存済みの内容を読み込みました。');};
 $('export').onclick=()=>{if(hasDraft()){status('先に入力中の資産・運用条件を試算に反映してください。',true);return;}download(JSON.stringify(state,null,2),'asset-simulation.json','application/json');};
 $('import').onclick=()=>$('importFile').click();$('importFile').onchange=async()=>{try{const file=$('importFile').files[0];if(!file)return;if(file.size>700000)throw Error('ファイルが大きすぎます');const next=validNext(JSON.parse(await file.text()));if(!confirm(`${next.plans.length}件のプランで現在の設定を置き換えます。よろしいですか？（保存は別途必要です）`))return;next.revision=state.revision;state=next;selected=state.plans[0].id;changed();renderSettings();render();}catch(e){status(e.message,true);}finally{$('importFile').value='';}};
@@ -83,4 +87,4 @@ $('exitSample').onclick=()=>location.reload();
 $('login').onclick=async()=>{try{await cloud.login();}catch(e){$('authStatus').textContent='ログインできませんでした。ポップアップの許可と通信状態を確認してください。';}};
 $('logout').onclick=async()=>{if((dirty||hasDraft())&&!confirm('未保存の変更を破棄してログアウトしますか？'))return;try{await cloud.logout();}catch(e){status('ログアウトできませんでした。もう一度お試しください。',true);}};
 document.querySelectorAll('.tablewrap').forEach(el=>{el.tabIndex=0;el.setAttribute('role','region');el.setAttribute('aria-label','横にスクロールできる表');});
-try{cloud=await import('./simulation-cloud.js');$('login').disabled=false;cloud.watch(u=>{if(demo)return;userId=u?.uid||null;ready=false;dirty=false;settingsDirty=false;assetsDirty=false;latest=null;state=emptyState();selected=state.plans[0].id;$('modal').close();$('auth').hidden=!!u;$('app').hidden=!u;$('logout').hidden=!u;$('authStatus').textContent='家計簿・資産管理と同じアカウントでログインできます。';controls();status('保存内容を読み込んでいます…');},s=>{if(demo)return;latest=structuredClone(s);ready=true;if(!dirty&&!busy&&!hasDraft()&&!$('modal').open){state=structuredClone(s);renderSettings();render();status('保存内容を読み込みました。');}else{controls();if(s.revision>state.revision&&!busy)status('別の端末の更新を受信しました。未保存の入力は保持しています。バックアップ後に最新の保存内容を読み込んでください。',true);}},e=>{if(demo)return;ready=false;controls();status('保存内容を読み込めませんでした。再読み込みしてください。'+(e.code==='permission-denied'?' 保存先へのアクセスが許可されていません。':''),true);});}catch(e){$('authStatus').textContent='ログインに接続できませんでした。通信環境を確認して再読み込みしてください。サンプルは利用できます。';}
+try{cloud=await import('./simulation-cloud.js?v=annual-1');$('login').disabled=false;cloud.watch(u=>{if(demo)return;userId=u?.uid||null;ready=false;dirty=false;settingsDirty=false;assetsDirty=false;latest=null;state=emptyState();selected=state.plans[0].id;$('modal').close();$('auth').hidden=!!u;$('app').hidden=!u;$('logout').hidden=!u;$('authStatus').textContent='家計簿・資産管理と同じアカウントでログインできます。';controls();status('保存内容を読み込んでいます…');},s=>{if(demo)return;latest=structuredClone(s);ready=true;if(!dirty&&!busy&&!hasDraft()&&!$('modal').open){state=structuredClone(s);renderSettings();render();status('保存内容を読み込みました。');}else{controls();if(s.revision>state.revision&&!busy)status('別の端末の更新を受信しました。未保存の入力は保持しています。バックアップ後に最新の保存内容を読み込んでください。',true);}},e=>{if(demo)return;ready=false;controls();status('保存内容を読み込めませんでした。再読み込みしてください。'+(e.code==='permission-denied'?' 保存先へのアクセスが許可されていません。':''),true);});}catch(e){$('authStatus').textContent='ログインに接続できませんでした。通信環境を確認して再読み込みしてください。サンプルは利用できます。';}
