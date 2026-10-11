@@ -1,4 +1,4 @@
-import {normalize,classify} from './ledger.js';
+import {normalize,classify} from './ledger.js?v=amex-1';
 const money=v=>{const s=String(v).replaceAll(',','').trim();if(!/^-?\d+(\.0+)?$/.test(s)||!Number.isSafeInteger(Number(s)))throw Error('金額を読み取れない明細があります');return Number(s);};
 function date(v){if(v instanceof Date)return `${v.getFullYear()}/${String(v.getMonth()+1).padStart(2,'0')}/${String(v.getDate()).padStart(2,'0')}`;const s=String(v).replaceAll('-','/');if(!/^\d{4}\/\d{2}\/\d{2}$/.test(s)||Number.isNaN(Date.parse(s)))throw Error('日付を読み取れません');return s;}
 export async function parseFile(f,personMap){const raw=Uint8Array.from(atob(f.data),c=>c.charCodeAt(0));if(raw.length>8000000)throw Error('1ファイル8MB以内にしてください');let rows=[],period='',warnings=[];
