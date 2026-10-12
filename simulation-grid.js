@@ -1,4 +1,4 @@
-import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=breakdown-1';
+import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=monthly-breakdown-1';
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
