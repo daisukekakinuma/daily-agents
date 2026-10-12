@@ -1,4 +1,4 @@
-import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=monthly-breakdown-1';
+import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=family-events-1';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createBreakdown({getPlan,update,markPending}){

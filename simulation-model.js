@@ -3,6 +3,8 @@ export function newPlan(year = new Date().getFullYear()) {
   return {id:crypto.randomUUID(),name:'基本プラン',startYear:year,endYear:year+35,cash:0,investments:0,reserve:0,rate:3,investPercent:100,goal:0,items:[]};
 }
 export const emptyState=()=>({version:1,revision:0,plans:[newPlan()]});
+// Personal family details stay in each saved plan, not in the public defaults.
+export const familyMembers=p=>p.family??['本人','配偶者','子供'].map(name=>({name,birthYear:null}));
 const finite=(v,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
 const money=v=>Number.isSafeInteger(v)&&finite(v,0,1e12);
 const year=v=>Number.isInteger(v)&&finite(v,1900,2200);
@@ -13,6 +15,14 @@ export function validate(s){
     if(typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||!p.name.trim()||p.name.length>60)throw Error('プラン名を確認してください');ids.add(p.id);
     if(!year(p.startYear)||!year(p.endYear)||p.endYear<p.startYear||p.endYear-p.startYear>80)throw Error('試算期間は1900〜2200年の範囲、最大81年間です');
     if(![p.cash,p.investments,p.reserve,p.goal].every(money)||!finite(p.rate,-100,100)||!finite(p.investPercent,0,100))throw Error('資産・生活資金・利回り・投資割合を確認してください');
+    if(p.family!==undefined&&(!Array.isArray(p.family)||p.family.length!==3||p.family.some(m=>!m||typeof m.name!=='string'||!m.name.trim()||m.name.length>40||(m.birthYear!==null&&!year(m.birthYear)))))throw Error('家族の名前・生まれ年を確認してください');
+    if(p.lifeEvents!==undefined){
+      if(!Array.isArray(p.lifeEvents)||p.lifeEvents.length!==3)throw Error('イベント欄は3行です');
+      for(const line of p.lifeEvents){
+        if(!line||typeof line!=='object'||Array.isArray(line)||Object.keys(line).length>301)throw Error('イベント欄の形式を確認してください');
+        for(const [y,text] of Object.entries(line))if(!/^\d{4}$/.test(y)||!year(Number(y))||typeof text!=='string'||text.length>200)throw Error('イベントは各年200文字以内で入力してください');
+      }
+    }
     if(!Array.isArray(p.items)||p.items.length>500)throw Error('収支項目は500件までです');
     const itemIds=new Set();
     for(const i of p.items){

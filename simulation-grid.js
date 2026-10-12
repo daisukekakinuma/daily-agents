@@ -1,4 +1,4 @@
-import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue} from './simulation-model.js?v=monthly-breakdown-1';
+import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue,familyMembers} from './simulation-model.js?v=family-events-1';
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
@@ -19,13 +19,16 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,onYear,o
   function render(rows){
     const p=getPlan(),years=rows.map(r=>r.year),unit=scale()===10000?'万円':'円';
     if(selected?.plan!==p.id||!p.items.some(i=>i.id===selected?.id&&i.enabled)||!years.includes(selected?.year)){selected=null;$('gridSelection').textContent='金額のセルを選ぶと、右の年へまとめてコピーできます。';$('fillRight').disabled=true;$('resetCell').disabled=true;}
-    const key=JSON.stringify([p.id,p.startYear,p.endYear,scale(),p.items.map(i=>[i.id,i.name,i.category,i.kind,i.enabled,Array.isArray(i.breakdown)])]);
+    const key=JSON.stringify([p.id,p.startYear,p.endYear,scale(),familyMembers(p),p.items.map(i=>[i.id,i.name,i.category,i.kind,i.enabled,Array.isArray(i.breakdown)])]);
     if(signature!==key){
       signature=key;
       const values=(key,label,cls='')=>`<tr class="grid-total ${cls}"><th scope="row">${label}</th>${years.map(y=>`<td data-result="${key}" data-year="${y}"></td>`).join('')}</tr>`;
       const section=(kind,title)=>`<tr class="grid-section ${kind}"><th scope="row">${title}</th>${years.map(()=>'<td></td>').join('')}</tr>`+p.items.filter(i=>i.kind===kind).map(i=>`<tr class="grid-item ${kind} ${i.enabled?'':'is-disabled'}" data-row-id="${esc(i.id)}"><th scope="row"><div class="grid-rowhead"><button type="button" class="grid-drag" data-drag-id="${esc(i.id)}" aria-label="${esc(i.name)}の順番を変更" title="ドラッグして並べ替え。上下キーでも移動できます">⠿</button><input type="checkbox" data-grid-enable="${esc(i.id)}" aria-label="${esc(i.name)}を年別表で有効にする" ${i.enabled?'checked':''}><input data-row-name="${esc(i.id)}" aria-label="項目名 ${esc(i.name)}" value="${esc(i.name)}" maxlength="80" required>${i.kind==='expense'?`<button type="button" data-breakdown="${esc(i.id)}" aria-label="${esc(i.name)}の内訳を管理">内訳</button>`:''}<button type="button" data-detail="${esc(i.id)}" aria-label="${esc(i.name)}の詳細設定">設定</button></div><span class="grid-category">${esc(i.category)}</span></th>${years.map(y=>`<td><input type="text" inputmode="decimal" autocomplete="off" data-item="${esc(i.id)}" data-year="${y}" aria-label="${esc(i.name)} ${y}年 年額（${unit}）" ${i.enabled&&!i.breakdown?'':'disabled'} ${i.breakdown?'class="calculated-value" title="支出内訳の合計です。内訳画面で金額を編集してください。"':''}></td>`).join('')}</tr>`).join('')+values(kind,title+' 合計',kind);
-      $('annualTable').innerHTML=`<thead><tr><th scope="col">項目 ／ 年額（${unit}）</th>${years.map(y=>`<th scope="col"><button type="button" data-focus-year="${y}" aria-label="${y}年の資産を見る">${y}<small>${y-p.startYear+1}年目</small></button></th>`).join('')}</tr></thead><tbody>${section('income','収入')}${section('expense','支出')}${values('net','年間収支')}${values('contribution','投資に回す額')}${values('cash','年末の現金')}${values('investments','年末の運用資産')}${values('total','年末の総資産','asset-total')}${values('unfunded','未充足額（資金不足）','shortfall')}</tbody>`;
+      const family=familyMembers(p).map((m,index)=>`<tr class="grid-family"><th scope="row"><input data-family-name="${index}" aria-label="家族${index+1}の名前" value="${esc(m.name)}" maxlength="40"><label>生まれ年 <input type="number" data-family-birth="${index}" aria-label="家族${index+1}の生まれ年" min="1900" max="2200" step="1" placeholder="西暦" value="${m.birthYear??''}"></label></th>${years.map(y=>`<td>${m.birthYear===null?'—':y<m.birthYear?'<span class="muted">出生前</span>':y===m.birthYear?'0歳・誕生':`${y-m.birthYear}歳`}</td>`).join('')}</tr>`).join('');
+      const events=[0,1,2].map(index=>`<tr class="grid-event"><th scope="row">イベント ${index+1}</th>${years.map(y=>`<td><textarea data-event-line="${index}" data-year="${y}" aria-label="イベント${index+1} ${y}年" maxlength="200" rows="2" placeholder="自由に入力"></textarea></td>`).join('')}</tr>`).join('');
+      $('annualTable').innerHTML=`<thead><tr><th scope="col">項目 ／ 年額（${unit}）</th>${years.map(y=>`<th scope="col"><button type="button" data-focus-year="${y}" aria-label="${y}年の資産を見る">${y}<small>${y-p.startYear+1}年目</small></button></th>`).join('')}</tr></thead><tbody>${family}${events}${section('income','収入')}${section('expense','支出')}${values('net','年間収支')}${values('contribution','投資に回す額')}${values('cash','年末の現金')}${values('investments','年末の運用資産')}${values('total','年末の総資産','asset-total')}${values('unfunded','未充足額（資金不足）','shortfall')}</tbody>`;
     }
+    for(const input of $('annualTable').querySelectorAll('[data-event-line]'))if(document.activeElement!==input)input.value=p.lifeEvents?.[Number(input.dataset.eventLine)]?.[input.dataset.year]??'';
     const itemMap=new Map(p.items.map(i=>[i.id,i])),rowMap=new Map(rows.map(r=>[r.year,r]));
     for(const input of $('annualTable').querySelectorAll('[data-item]')){
       const i=itemMap.get(input.dataset.item),y=Number(input.dataset.year),manual=Object.hasOwn(i.annualValues||{},y);
@@ -35,12 +38,24 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,onYear,o
     for(const td of $('annualTable').querySelectorAll('[data-result]')){const n=rowMap.get(Number(td.dataset.year))[td.dataset.result];td.textContent=fmt(n);td.classList.toggle('negative',n<0||(td.dataset.result==='unfunded'&&n>0));}
     $('gridEmpty').hidden=p.items.length>0;
   }
-  $('annualTable').addEventListener('input',e=>{if(e.target.dataset.item||e.target.dataset.rowName)markPending();});
+  $('annualTable').addEventListener('input',e=>{if(e.target.matches('[data-item],[data-row-name],[data-family-name],[data-family-birth],[data-event-line]'))markPending();});
   $('annualTable').addEventListener('focusin',e=>{if(e.target.dataset.item)choose(e.target);});
   function commitCell(e){
     const input=e.target;if(!input.isConnected)return;
     try{
-      if(input.dataset.item){
+      if(input.matches('[data-family-name],[data-family-birth]')){
+        const index=Number(input.dataset.familyName??input.dataset.familyBirth),isName=input.hasAttribute('data-family-name');
+        const value=isName?input.value.trim():input.value===''?null:Number(input.value);
+        if(familyMembers(getPlan())[index][isName?'name':'birthYear']===value)return;
+        update(p=>{p.family=structuredClone(familyMembers(p));p.family[index][isName?'name':'birthYear']=value;});
+        $('gridStatus').textContent='家族の年齢を更新しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';
+      }
+      else if(input.hasAttribute('data-event-line')){
+        if((getPlan().lifeEvents?.[Number(input.dataset.eventLine)]?.[input.dataset.year]??'')===input.value)return;
+        update(p=>{p.lifeEvents??=[{},{},{}];const line=p.lifeEvents[Number(input.dataset.eventLine)];if(input.value)line[input.dataset.year]=input.value;else delete line[input.dataset.year];});
+        $('gridStatus').textContent='イベントを反映しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';
+      }
+      else if(input.dataset.item){
         const id=input.dataset.item,y=Number(input.dataset.year),text=input.value;
         const previous=annualAmount(getPlan().items.find(i=>i.id===id),y),amount=parseAnnualValue(text,scale());
         update(p=>applyAnnualBlock(p,id,y,text,scale()));
@@ -54,10 +69,10 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,onYear,o
       }
       else if(input.dataset.rowName){const name=input.value.trim();if(getPlan().items.find(i=>i.id===input.dataset.rowName)?.name===name)return;if(!name)throw Error('項目名を入力してください');update(p=>p.items.find(i=>i.id===input.dataset.rowName).name=name);}
       else if(input.dataset.gridEnable)update(p=>p.items.find(i=>i.id===input.dataset.gridEnable).enabled=input.checked);
-    }catch(err){error(err);if(input.dataset.item)input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===input.dataset.item),Number(input.dataset.year)));else if(input.dataset.rowName)input.value=getPlan().items.find(i=>i.id===input.dataset.rowName).name;else if(input.dataset.gridEnable)input.checked=!input.checked;}
+    }catch(err){error(err);if(input.matches('[data-family-name],[data-family-birth]')){const m=familyMembers(getPlan())[Number(input.dataset.familyName??input.dataset.familyBirth)];input.value=input.hasAttribute('data-family-name')?m.name:m.birthYear??'';}if(input.dataset.item)input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===input.dataset.item),Number(input.dataset.year)));else if(input.dataset.rowName)input.value=getPlan().items.find(i=>i.id===input.dataset.rowName).name;else if(input.dataset.gridEnable)input.checked=!input.checked;}
   }
   $('annualTable').addEventListener('change',commitCell);
-  $('annualTable').addEventListener('focusout',e=>{const i=e.target;if(i.dataset.rowName||(i.dataset.item&&i.value!==fmt(annualAmount(getPlan().items.find(x=>x.id===i.dataset.item),Number(i.dataset.year)))))commitCell(e);});
+  $('annualTable').addEventListener('focusout',e=>{const i=e.target;if(i.matches('[data-family-name],[data-family-birth],[data-event-line]')||i.dataset.rowName||(i.dataset.item&&i.value!==fmt(annualAmount(getPlan().items.find(x=>x.id===i.dataset.item),Number(i.dataset.year)))))commitCell(e);});
   $('annualTable').addEventListener('paste',e=>{
     if(!e.target.dataset.item)return;
     e.preventDefault();const input=e.target;
