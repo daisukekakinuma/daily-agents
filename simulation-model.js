@@ -15,6 +15,7 @@ export function validate(s){
     if(typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||!p.name.trim()||p.name.length>60)throw Error('プラン名を確認してください');ids.add(p.id);
     if(!year(p.startYear)||!year(p.endYear)||p.endYear<p.startYear||p.endYear-p.startYear>80)throw Error('試算期間は1900〜2200年の範囲、最大81年間です');
     if(![p.cash,p.investments,p.reserve,p.goal].every(money)||!finite(p.rate,-100,100)||!finite(p.investPercent,0,100))throw Error('資産・生活資金・利回り・投資割合を確認してください');
+    if((p.childNisaRate!==undefined&&!finite(p.childNisaRate,-100,100))||(p.childNisaInitial!==undefined&&!money(p.childNisaInitial)))throw Error('こどもNISAの残高・利回りを確認してください');
     if(p.annualContributions!==undefined){
       if(!p.annualContributions||typeof p.annualContributions!=='object'||Array.isArray(p.annualContributions)||Object.keys(p.annualContributions).length>301)throw Error('年別投資額の形式を確認してください');
       for(const [y,n] of Object.entries(p.annualContributions))if(!/^\d{4}$/.test(y)||!year(Number(y))||!money(n))throw Error('投資額は0〜1兆円の整数で入力してください');
@@ -31,6 +32,7 @@ export function validate(s){
     const itemIds=new Set();
     for(const i of p.items){
       if(typeof i.id!=='string'||!i.id||itemIds.has(i.id)||!['income','expense'].includes(i.kind)||typeof i.category!=='string'||!i.category.trim()||i.category.length>60||typeof i.name!=='string'||!i.name.trim()||i.name.length>80||typeof i.enabled!=='boolean')throw Error('項目の名前・分類を確認してください');itemIds.add(i.id);
+      if(i.childNisa!==undefined&&typeof i.childNisa!=='boolean')throw Error('こどもNISAの設定を確認してください');
       if(!money(i.amount)||!['monthly','annual','once'].includes(i.frequency)||!year(i.start)||!year(i.end)||i.end<i.start||!finite(i.growth,-100,100)||(i.frequency==='once'&&i.start!==i.end))throw Error('項目の金額・期間・増減率を確認してください');
       if(i.annualValues!==undefined){
         if(!i.annualValues||typeof i.annualValues!=='object'||Array.isArray(i.annualValues)||Object.keys(i.annualValues).length>301)throw Error('年別金額の形式を確認してください');
@@ -90,19 +92,30 @@ export function applyAnnualBlock(plan,id,startYear,text,scale=10000){
   for(const [item,y,n] of edits){item.annualValues??={};if(n===null)delete item.annualValues[y];else item.annualValues[y]=n;}
   return edits.length;
 }
+// Existing named rows opt in; an explicit flag also supports renamed rows.
+export const isChildNisa=i=>i.kind==='expense'&&(i.childNisa??/^(こども|子供|子ども|子ども用|子供用)NISA$/i.test(i.name.normalize('NFKC').replace(/\s/g,'')));
+export const openingTotal=p=>p.cash+p.investments+(p.childNisaInitial??0);
 export function simulate(p,rate=p.rate){
   validate({version:1,revision:0,plans:[{...p,rate}]});
-  let cash=p.cash,investments=p.investments,unfunded=0;
+  let cash=p.cash,investments=p.investments,childNisa=p.childNisaInitial??0,unfunded=0;
   const rows=[];
   for(let y=p.startYear;y<=p.endYear;y++){
     const income=p.items.filter(i=>i.kind==='income').reduce((s,i)=>s+annualAmount(i,y),0);
     const expense=p.items.filter(i=>i.kind==='expense').reduce((s,i)=>s+annualAmount(i,y),0);
+    const childNisaRequested=p.items.filter(isChildNisa).reduce((s,i)=>s+annualAmount(i,y),0);
+    const childNisaGain=Math.round(childNisa*(p.childNisaRate??0)/100);
+    childNisa+=childNisaGain;
     const net=income-expense,gain=Math.round(investments*rate/100);
     investments+=gain;cash+=net;
     // An unresolved prior shortfall consumes later cash inflows before new investment.
     const repaid=Math.min(Math.max(cash,0),unfunded);cash-=repaid;unfunded-=repaid;
     let withdrawal=0,shortfall=0,contribution=0;
     if(cash<0){withdrawal=Math.min(investments,-cash);investments-=withdrawal;cash+=withdrawal;if(cash<0){shortfall=-cash;unfunded+=shortfall;cash=0;}}
+    // Unfunded child contributions are skipped, rather than creating assets or debt.
+    const childNisaGap=Math.min(childNisaRequested,shortfall);
+    shortfall-=childNisaGap;unfunded-=childNisaGap;
+    const childNisaContribution=childNisaRequested-childNisaGap;
+    childNisa+=childNisaContribution;
     const requestedContribution=p.annualContributions?.[y]??null;
     if(requestedContribution!==null){
       // Manual transfers may use existing savings and override the reserve target.
@@ -111,9 +124,9 @@ export function simulate(p,rate=p.rate){
     }else if(net>0&&unfunded===0){contribution=Math.round(Math.min(net*p.investPercent/100,Math.max(0,cash-p.reserve)));}
     cash-=contribution;investments+=contribution;
     const contributionGap=requestedContribution===null?0:requestedContribution-contribution;
-    const total=cash+investments;
+    const total=cash+investments+childNisa;
     if(!Number.isSafeInteger(total)||total>Number.MAX_SAFE_INTEGER||!Number.isSafeInteger(unfunded))throw Error('試算結果が大きすぎます。金額・利回り・期間を見直してください');
-    rows.push({year:y,income,expense,net,gain,contribution,requestedContribution,contributionGap,withdrawal,cash,investments,total,shortfall,unfunded,reserveGap:Math.max(0,p.reserve-cash)});
+    rows.push({childNisa,childNisaGain,childNisaContribution,childNisaGap,year:y,income,expense,net,gain,contribution,requestedContribution,contributionGap,withdrawal,cash,investments,total,shortfall,unfunded,reserveGap:Math.max(0,p.reserve-cash)});
   }
   return rows;
 }
