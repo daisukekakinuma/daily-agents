@@ -1,4 +1,4 @@
-import {createAnnualGrid} from './simulation-grid.js?v=editable-events-1';
+import {createAnnualGrid} from './simulation-grid.js?v=item-delete-1';
 import {createBreakdown} from './simulation-breakdown.js?v=editable-events-1';
 import {emptyState,validate,simulate,annualAmount,sampleState} from './simulation-model.js?v=editable-events-1';
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -6,7 +6,7 @@ const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP'),unit={monthly:'月',annu
 let state=emptyState(),selected=state.plans[0].id,latest=null,ready=false,dirty=false,busy=false,demo=false,cloud,editing=null,editingAnnualValues,editingBreakdown,userId=null,settingsDirty=false,assetsDirty=false;
 const hasDraft=()=>settingsDirty||assetsDirty;
 const current=()=>state.plans.find(p=>p.id===selected)||state.plans[0];
-const annualGrid=createAnnualGrid({getPlan:current,update:updatePlan,openItem,openBreakdown,onUnitChange:()=>breakdownView.render(),onYear:y=>{$('focusYear').value=y;render();$('focusLabel').scrollIntoView({behavior:'smooth',block:'center'});},markPending:changed});
+const annualGrid=createAnnualGrid({getPlan:current,update:updatePlan,openItem,openBreakdown,openDeleteItem,onUnitChange:()=>breakdownView.render(),onYear:y=>{$('focusYear').value=y;render();$('focusLabel').scrollIntoView({behavior:'smooth',block:'center'});},markPending:changed});
 const breakdownView=createBreakdown({getPlan:current,update:updatePlan,markPending:changed});
 function status(s,error=false){$('status').textContent=s;$('status').className=error?'error':'';}
 function controls(){$('workspace').disabled=!ready||busy;$('save').disabled=!ready||busy||demo||!dirty;$('logout').disabled=busy;$('saveGrid').disabled=$('save').disabled;}
@@ -62,11 +62,25 @@ function openItem(kind,id,copy=false){
   $('categories').innerHTML=[...new Set(['基本生活費','住居費','通信費','医療費','教育費','自動車','子供の生活費','娯楽費','税・社会保険','その他','給与','年金','児童手当',...p.items.map(i=>i.category)])].map(c=>`<option value="${esc(c)}"></option>`).join('');
   $('modalTitle').textContent=editing?'収支項目を編集':'収支項目を追加';$('itemError').textContent='';$('itemBreakdownNote').hidden=!item.breakdown;setFrequency();$('modal').showModal();
 }
+let deletingItem=null;
+function openDeleteItem(id){
+  const p=current(),item=p.items.find(i=>i.id===id);if(!item)return;
+  deletingItem={plan:p.id,id};
+  $('deleteItemMessage').textContent=`「${item.name}」を削除しますか？すべての年の金額${item.breakdown?'と支出内訳':''}が削除され、収支と資産の試算が更新されます。`;
+  $('deleteItemModal').showModal();$('cancelDeleteItem').focus();
+}
+$('cancelDeleteItem').onclick=()=>$('deleteItemModal').close();
+$('deleteItemModal').addEventListener('close',()=>{deletingItem=null;});
+$('confirmDeleteItem').onclick=()=>{
+  if(!deletingItem||deletingItem.plan!==current().id){$('deleteItemModal').close();return;}
+  const id=deletingItem.id,item=current().items.find(i=>i.id===id);if(!item){$('deleteItemModal').close();return;}
+  try{updatePlan(p=>p.items=p.items.filter(i=>i.id!==id));$('deleteItemModal').close();$('gridStatus').textContent=`「${item.name}」を削除しました。最後に「変更を保存」を押してください。`;$('gridStatus').className='muted';}catch(e){status(e.message,true);}
+};
 function setFrequency(){const f=$('itemForm').elements;f.end.disabled=f.frequency.value==='once';if(f.end.disabled)f.end.value=f.start.value;}
 $('itemForm').elements.frequency.onchange=setFrequency;$('itemForm').elements.start.onchange=setFrequency;
 $('itemForm').onsubmit=e=>{e.preventDefault();try{const f=$('itemForm').elements,item={id:editing||crypto.randomUUID(),enabled:editing?current().items.find(i=>i.id===editing).enabled:true};for(const k of ['kind','category','name','frequency'])item[k]=f[k].value.trim();for(const k of ['amount','start','end','growth'])item[k]=Number(f[k].value);if(item.frequency==='once')item.end=item.start;if(editingAnnualValues)item.annualValues=editingAnnualValues;if(editingBreakdown)item.breakdown=editingBreakdown;updatePlan(p=>{if(editing)p.items[p.items.findIndex(i=>i.id===editing)]=item;else p.items.push(item);});$('modal').close();}catch(e){$('itemError').textContent=e.message;}};
 $('close').onclick=()=>$('modal').close();$('addIncome').onclick=()=>openItem('income');$('addExpense').onclick=()=>openItem('expense');
-$('itemRows').onclick=e=>{const b=e.target.closest('button');if(!b)return;try{if(b.dataset.edit)openItem('',b.dataset.edit);if(b.dataset.copy)openItem('',b.dataset.copy,true);if(b.dataset.delete&&confirm('この収支項目を削除しますか？'))updatePlan(p=>p.items=p.items.filter(i=>i.id!==b.dataset.delete));}catch(e){status(e.message,true);}};
+$('itemRows').onclick=e=>{const b=e.target.closest('button');if(!b)return;try{if(b.dataset.edit)openItem('',b.dataset.edit);if(b.dataset.copy)openItem('',b.dataset.copy,true);if(b.dataset.delete)openDeleteItem(b.dataset.delete);}catch(e){status(e.message,true);}};
 $('itemRows').onchange=e=>{if(e.target.dataset.enable)try{updatePlan(p=>p.items.find(i=>i.id===e.target.dataset.enable).enabled=e.target.checked);}catch(err){status(err.message,true);render();}};
 $('settingsForm').oninput=()=>{settingsDirty=true;$('settingsError').textContent='条件はまだ反映されていません。「条件を試算に反映」を押してください。';};
 $('settingsForm').onsubmit=e=>{e.preventDefault();try{const f=$('settingsForm').elements;updatePlan(p=>{p.name=f.name.value.trim();for(const k of ['startYear','endYear','reserve','rate','investPercent','goal'])p[k]=Number(f[k].value);});renderSettings(false);}catch(e){$('settingsError').textContent=e.message;}};
