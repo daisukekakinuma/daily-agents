@@ -17,7 +17,7 @@ export function validate(s){
     if(![p.cash,p.investments,p.reserve,p.goal].every(money)||!finite(p.rate,-100,100)||!finite(p.investPercent,0,100))throw Error('資産・生活資金・利回り・投資割合を確認してください');
     if(p.family!==undefined&&(!Array.isArray(p.family)||p.family.length!==3||p.family.some(m=>!m||typeof m.name!=='string'||!m.name.trim()||m.name.length>40||(m.birthYear!==null&&!year(m.birthYear)))))throw Error('家族の名前・生まれ年を確認してください');
     if(p.lifeEvents!==undefined){
-      if(!Array.isArray(p.lifeEvents)||p.lifeEvents.length!==3)throw Error('イベント欄は3行です');
+      if(!Array.isArray(p.lifeEvents)||p.lifeEvents.length>20)throw Error('イベント欄は20行まで追加できます');
       for(const line of p.lifeEvents){
         if(!line||typeof line!=='object'||Array.isArray(line)||Object.keys(line).length>301)throw Error('イベント欄の形式を確認してください');
         for(const [y,text] of Object.entries(line))if(!/^\d{4}$/.test(y)||!year(Number(y))||typeof text!=='string'||text.length>200)throw Error('イベントは各年200文字以内で入力してください');
