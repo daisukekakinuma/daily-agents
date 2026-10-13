@@ -22,7 +22,7 @@ function chart(rows,p,other){
   const focus=rows.find(r=>r.year===Number($('focusYear').value));
   $('chart').innerHTML=`<svg viewBox="0 0 920 320" role="img" aria-label="年末の資産推移。正確な金額は年ごとの結果で確認できます。">${[0,.25,.5,.75,1].map(f=>`<line x1="90" x2="890" y1="${y(max*f)}" y2="${y(max*f)}" stroke="#e3e8f0"/><text x="80" y="${y(max*f)+5}" text-anchor="end" fill="#69768a" font-size="14">${(max*f/10000).toLocaleString('ja-JP',{maximumFractionDigits:0})}万</text>`).join('')}${series.map(s=>`<polyline fill="none" stroke="${s.color}" stroke-width="3" points="${s.values.map(r=>`${x(r.year)},${y(r.total)}`).join(' ')}"/>`).join('')}${focus?`<line x1="${x(focus.year)}" x2="${x(focus.year)}" y1="25" y2="270" stroke="#244fe0" stroke-dasharray="5 5"/><circle cx="${x(focus.year)}" cy="${y(focus.total)}" r="6" fill="#244fe0" stroke="white" stroke-width="2"><title>${focus.year}年末 ${yen(focus.total)}</title></circle>`:''}${Array.from({length:6},(_,i)=>{const yr=Math.round(minYear+(maxYear-minYear)*i/5);return `<text x="${x(yr)}" y="302" text-anchor="middle" fill="#69768a" font-size="14">${yr}</text>`}).join('')}</svg><div class="legend">${series.map(s=>`<span style="--color:${s.color}">${esc(s.name)}</span>`).join('')}</div>`;
 }
-function renderAssets(){const p=current();for(const el of $('currentAssetsForm').elements)if(el.name)el.value=p[el.name];assetsDirty=false;$('assetError').textContent='';}
+function renderAssets(){const p=current();for(const el of $('currentAssetsForm').elements)if(el.name)el.value=p[el.name]/10000;assetsDirty=false;$('assetError').textContent='';}
 function renderSettings(resetAssets=true){if(resetAssets)renderAssets();const p=current();for(const el of $('settingsForm').elements)if(el.name)el.value=p[el.name];settingsDirty=false;$('settingsError').textContent='';}
 function render(){
   const p=current();selected=p.id;controls();
@@ -33,6 +33,7 @@ function render(){
   const initial=p.cash+p.investments;
   $('assetBasis').textContent=`入力額を${p.startYear}年初の資産として、${p.endYear}年末まで試算します。`;
   $('currentTotal').textContent=yen(initial);
+  $('cashEquivalent').textContent='反映済み '+yen(p.cash);$('investmentEquivalent').textContent='反映済み '+yen(p.investments);
   $('focusLabel').textContent=r.year+'年末の総資産';$('focusTotal').textContent=yen(r.total);
   $('focusBreakdown').textContent=`現金 ${yen(r.cash)} ／ 運用資産 ${yen(r.investments)}`;
   const change=r.total-initial;$('focusChange').textContent=`開始時点から ${change>=0?'+':'−'}${yen(Math.abs(change))}`;
@@ -86,8 +87,19 @@ $('itemRows').onclick=e=>{const b=e.target.closest('button');if(!b)return;try{if
 $('itemRows').onchange=e=>{if(e.target.dataset.enable)try{updatePlan(p=>p.items.find(i=>i.id===e.target.dataset.enable).enabled=e.target.checked);}catch(err){status(err.message,true);render();}};
 $('settingsForm').oninput=()=>{settingsDirty=true;$('settingsError').textContent='条件はまだ反映されていません。「条件を試算に反映」を押してください。';};
 $('settingsForm').onsubmit=e=>{e.preventDefault();try{const f=$('settingsForm').elements;updatePlan(p=>{p.name=f.name.value.trim();for(const k of ['startYear','endYear','reserve','rate','investPercent','goal'])p[k]=Number(f[k].value);});renderSettings(false);}catch(e){$('settingsError').textContent=e.message;}};
-$('currentAssetsForm').oninput=()=>{assetsDirty=true;$('assetError').textContent='入力中です。「現在の資産を反映」を押すと結果が更新されます。';};
-$('currentAssetsForm').onsubmit=e=>{e.preventDefault();try{const f=$('currentAssetsForm').elements;updatePlan(p=>{p.cash=Number(f.cash.value);p.investments=Number(f.investments.value);});renderAssets();}catch(e){$('assetError').textContent=e.message;}};
+function applyCurrentAssets(){
+  const form=$('currentAssetsForm'),f=form.elements;
+  if(!form.checkValidity()){$('assetError').textContent='現金と運用資産を0以上の金額で入力してください（小数第4位まで）。';return;}
+  try{
+    const cash=Math.round(Number(f.cash.value)*10000),investments=Math.round(Number(f.investments.value)*10000);
+    if(cash!==current().cash||investments!==current().investments)updatePlan(p=>{p.cash=cash;p.investments=investments;});
+    assetsDirty=false;$('assetError').textContent='';controls();
+  }catch(e){$('assetError').textContent=e.message;}
+}
+$('currentAssetsForm').oninput=()=>{assetsDirty=true;$('assetError').textContent='入力中です。入力欄から移動すると試算に反映します。';};
+$('currentAssetsForm').onchange=applyCurrentAssets;
+$('currentAssetsForm').addEventListener('focusout',()=>{if(assetsDirty)applyCurrentAssets();});
+$('currentAssetsForm').onsubmit=e=>{e.preventDefault();applyCurrentAssets();};
 $('milestones').onclick=e=>{const b=e.target.closest('[data-year]');if(b){$('focusYear').value=b.dataset.year;render();}};
 $('focusYear').onchange=render;$('filter').onchange=render;$('compare').onchange=render;
 $('plan').onchange=()=>{if(hasDraft()&&!confirm('未反映の資産・運用条件を破棄してプランを切り替えますか？')){$('plan').value=selected;return;}selected=$('plan').value;renderSettings();render();};
