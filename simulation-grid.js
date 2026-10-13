@@ -1,4 +1,4 @@
-import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue,familyMembers} from './simulation-model.js?v=editable-events-1';
+import {annualAmount,applyAnnualBlock,simulate,parseAnnualValue,familyMembers} from './simulation-model.js?v=manual-investments-1';
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $=id=>document.getElementById(id);
@@ -15,10 +15,10 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
   const scale=()=>Number($('gridUnit').value);
   const fmt=n=>(n/scale()).toLocaleString('ja-JP',{maximumFractionDigits:scale()===1?0:4});
   const error=e=>{$('gridStatus').textContent=e.message;$('gridStatus').className='error';};
-  function choose(input){const p=getPlan(),i=p.items.find(i=>i.id===input.dataset.item);if(!i)return;selected={plan:p.id,id:i.id,year:Number(input.dataset.year)};$('gridSelection').textContent=`${i.name}・${selected.year}年`;$('fillRight').disabled=false;$('resetCell').disabled=false;}
+  function choose(input){const p=getPlan();if(input.hasAttribute('data-contribution')){selected={plan:p.id,kind:'contribution',year:Number(input.dataset.year)};$('gridSelection').textContent=`投資に回す額・${selected.year}年`;$('fillRight').disabled=false;$('resetCell').disabled=false;return;}const i=p.items.find(i=>i.id===input.dataset.item);if(!i)return;selected={plan:p.id,id:i.id,year:Number(input.dataset.year)};$('gridSelection').textContent=`${i.name}・${selected.year}年`;$('fillRight').disabled=false;$('resetCell').disabled=false;}
   function render(rows){
     const p=getPlan(),years=rows.map(r=>r.year),unit=scale()===10000?'万円':'円';
-    if(selected?.plan!==p.id||!p.items.some(i=>i.id===selected?.id&&i.enabled)||!years.includes(selected?.year)){selected=null;$('gridSelection').textContent='金額のセルを選ぶと、右の年へまとめてコピーできます。';$('fillRight').disabled=true;$('resetCell').disabled=true;}
+    if(selected?.plan!==p.id||(selected?.kind!=='contribution'&&!p.items.some(i=>i.id===selected?.id&&i.enabled))||!years.includes(selected?.year)){selected=null;$('gridSelection').textContent='金額のセルを選ぶと、右の年へまとめてコピーできます。';$('fillRight').disabled=true;$('resetCell').disabled=true;}
     const key=JSON.stringify([p.id,p.startYear,p.endYear,scale(),familyMembers(p),(p.lifeEvents??[{},{},{}]).length,p.items.map(i=>[i.id,i.name,i.category,i.kind,i.enabled,Array.isArray(i.breakdown)])]);
     if(signature!==key){
       signature=key;
@@ -27,7 +27,7 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
       const family=familyMembers(p).map((m,index)=>`<tr class="grid-family"><th scope="row"><input data-family-name="${index}" aria-label="家族${index+1}の名前" value="${esc(m.name)}" maxlength="40"><label>生まれ年 <input type="number" data-family-birth="${index}" aria-label="家族${index+1}の生まれ年" min="1900" max="2200" step="1" placeholder="西暦" value="${m.birthYear??''}"></label></th>${years.map(y=>`<td>${m.birthYear===null?'—':y<m.birthYear?'<span class="muted">出生前</span>':y===m.birthYear?'0歳・誕生':`${y-m.birthYear}歳`}</td>`).join('')}</tr>`).join('');
       const eventLines=p.lifeEvents??[{},{},{}];
       const events=eventLines.map((line,index)=>`<tr class="grid-event"><th scope="row"><div class="grid-event-head"><span>イベント ${index+1}</span><button type="button" data-delete-event="${index}" aria-label="イベント${index+1}の行を削除">削除</button></div></th>${years.map(y=>`<td><textarea data-event-line="${index}" data-year="${y}" aria-label="イベント${index+1} ${y}年" maxlength="200" rows="2" placeholder="自由に入力"></textarea></td>`).join('')}</tr>`).join('');
-      $('annualTable').innerHTML=`<thead><tr><th scope="col">項目 ／ 年額（${unit}）</th>${years.map(y=>`<th scope="col"><button type="button" data-focus-year="${y}" aria-label="${y}年の資産を見る">${y}<small>${y-p.startYear+1}年目</small></button></th>`).join('')}</tr></thead><tbody>${family}${events}<tr class="grid-event-actions"><th scope="row"><button type="button" data-add-event ${eventLines.length>=20?'disabled':''}>＋ イベントの行</button>${eventLines.length>=20?'<small>最大20行です</small>':''}</th>${years.map(()=>'<td></td>').join('')}</tr>${section('income','収入')}${section('expense','支出')}${values('net','年間収支')}${values('contribution','投資に回す額')}${values('cash','年末の現金')}${values('investments','年末の運用資産')}${values('total','年末の総資産','asset-total')}${values('unfunded','未充足額（資金不足）','shortfall')}</tbody>`;
+      $('annualTable').innerHTML=`<thead><tr><th scope="col">項目 ／ 年額（${unit}）</th>${years.map(y=>`<th scope="col"><button type="button" data-focus-year="${y}" aria-label="${y}年の資産を見る">${y}<small>${y-p.startYear+1}年目</small></button></th>`).join('')}</tr></thead><tbody>${family}${events}<tr class="grid-event-actions"><th scope="row"><button type="button" data-add-event ${eventLines.length>=20?'disabled':''}>＋ イベントの行</button>${eventLines.length>=20?'<small>最大20行です</small>':''}</th>${years.map(()=>'<td></td>').join('')}</tr>${section('income','収入')}${section('expense','支出')}${values('net','年間収支')}<tr class="grid-contribution"><th scope="row">投資に回す額<small>自由入力・空欄で自動計算</small></th>${years.map(y=>`<td><input type="text" inputmode="decimal" autocomplete="off" data-contribution data-year="${y}" aria-label="投資に回す額 ${y}年 年額（${unit}）"><small data-contribution-note="${y}"></small></td>`).join('')}</tr>${values('cash','年末の現金')}${values('investments','年末の運用資産')}${values('total','年末の総資産','asset-total')}${values('unfunded','未充足額（資金不足）','shortfall')}</tbody>`;
     }
     for(const input of $('annualTable').querySelectorAll('[data-event-line]'))if(document.activeElement!==input)input.value=p.lifeEvents?.[Number(input.dataset.eventLine)]?.[input.dataset.year]??'';
     const itemMap=new Map(p.items.map(i=>[i.id,i])),rowMap=new Map(rows.map(r=>[r.year,r]));
@@ -37,14 +37,29 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
       input.classList.toggle('manual-value',manual);input.title=manual?'この年の個別入力。空欄にすると基本設定の金額に戻ります。':'基本設定から計算した年額。このセルに直接入力して変更できます。';
     }
     for(const td of $('annualTable').querySelectorAll('[data-result]')){const n=rowMap.get(Number(td.dataset.year))[td.dataset.result];td.textContent=fmt(n);td.classList.toggle('negative',n<0||(td.dataset.result==='unfunded'&&n>0));}
+    for(const input of $('annualTable').querySelectorAll('[data-contribution]')){
+      const y=Number(input.dataset.year),r=rowMap.get(y),manual=Object.hasOwn(p.annualContributions||{},y);
+      if(document.activeElement!==input)input.value=manual?fmt(p.annualContributions[y]):'';
+      input.placeholder=`自動 ${fmt(r.contribution)}`;input.classList.toggle('manual-value',manual);
+      const note=$('annualTable').querySelector(`[data-contribution-note="${y}"]`);
+      note.textContent=r.contributionGap>0?`実行 ${fmt(r.contribution)} ${unit}（現金不足）`:manual?'手入力':'自動計算';note.classList.toggle('negative',r.contributionGap>0);
+    }
     $('gridEmpty').hidden=p.items.length>0;
   }
-  $('annualTable').addEventListener('input',e=>{if(e.target.matches('[data-item],[data-row-name],[data-family-name],[data-family-birth],[data-event-line]'))markPending();});
-  $('annualTable').addEventListener('focusin',e=>{if(e.target.dataset.item)choose(e.target);});
+  $('annualTable').addEventListener('input',e=>{if(e.target.matches('[data-item],[data-contribution],[data-row-name],[data-family-name],[data-family-birth],[data-event-line]'))markPending();});
+  $('annualTable').addEventListener('focusin',e=>{if(e.target.dataset.item||e.target.hasAttribute('data-contribution'))choose(e.target);});
   function commitCell(e){
     const input=e.target;if(!input.isConnected)return;
     try{
-      if(input.matches('[data-family-name],[data-family-birth]')){
+      if(input.hasAttribute('data-contribution')){
+        const y=Number(input.dataset.year),amount=parseAnnualValue(input.value,scale()),previous=getPlan().annualContributions?.[y]??null;
+        if(amount===previous){input.value=amount===null?'':fmt(amount);return;}
+        update(p=>{p.annualContributions??={};if(amount===null)delete p.annualContributions[y];else p.annualContributions[y]=amount;});
+        input.value=amount===null?'':fmt(amount);
+        $('gridStatus').textContent=`${y}年の投資額を${amount===null?'自動計算に戻しました':'反映しました'}。最後に「変更を保存」を押してください。`;$('gridStatus').className='muted';
+        if(amount!==null&&y<getPlan().endYear)offerContributionCopy(y+1,amount);
+      }
+      else if(input.matches('[data-family-name],[data-family-birth]')){
         const index=Number(input.dataset.familyName??input.dataset.familyBirth),isName=input.hasAttribute('data-family-name');
         const value=isName?input.value.trim():input.value===''?null:Number(input.value);
         if(familyMembers(getPlan())[index][isName?'name':'birthYear']===value)return;
@@ -70,10 +85,10 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
       }
       else if(input.dataset.rowName){const name=input.value.trim();if(getPlan().items.find(i=>i.id===input.dataset.rowName)?.name===name)return;if(!name)throw Error('項目名を入力してください');update(p=>p.items.find(i=>i.id===input.dataset.rowName).name=name);}
       else if(input.dataset.gridEnable)update(p=>p.items.find(i=>i.id===input.dataset.gridEnable).enabled=input.checked);
-    }catch(err){error(err);if(input.matches('[data-family-name],[data-family-birth]')){const m=familyMembers(getPlan())[Number(input.dataset.familyName??input.dataset.familyBirth)];input.value=input.hasAttribute('data-family-name')?m.name:m.birthYear??'';}if(input.dataset.item)input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===input.dataset.item),Number(input.dataset.year)));else if(input.dataset.rowName)input.value=getPlan().items.find(i=>i.id===input.dataset.rowName).name;else if(input.dataset.gridEnable)input.checked=!input.checked;}
+    }catch(err){error(err);if(input.hasAttribute('data-contribution'))input.value=getPlan().annualContributions?.[input.dataset.year]===undefined?'':fmt(getPlan().annualContributions[input.dataset.year]);if(input.matches('[data-family-name],[data-family-birth]')){const m=familyMembers(getPlan())[Number(input.dataset.familyName??input.dataset.familyBirth)];input.value=input.hasAttribute('data-family-name')?m.name:m.birthYear??'';}if(input.dataset.item)input.value=fmt(annualAmount(getPlan().items.find(i=>i.id===input.dataset.item),Number(input.dataset.year)));else if(input.dataset.rowName)input.value=getPlan().items.find(i=>i.id===input.dataset.rowName).name;else if(input.dataset.gridEnable)input.checked=!input.checked;}
   }
   $('annualTable').addEventListener('change',commitCell);
-  $('annualTable').addEventListener('focusout',e=>{const i=e.target;if(i.matches('[data-family-name],[data-family-birth],[data-event-line]')||i.dataset.rowName||(i.dataset.item&&i.value!==fmt(annualAmount(getPlan().items.find(x=>x.id===i.dataset.item),Number(i.dataset.year)))))commitCell(e);});
+  $('annualTable').addEventListener('focusout',e=>{const i=e.target;if(i.matches('[data-contribution],[data-family-name],[data-family-birth],[data-event-line]')||i.dataset.rowName||(i.dataset.item&&i.value!==fmt(annualAmount(getPlan().items.find(x=>x.id===i.dataset.item),Number(i.dataset.year)))))commitCell(e);});
   $('annualTable').addEventListener('paste',e=>{
     if(!e.target.dataset.item)return;
     e.preventDefault();const input=e.target;
@@ -86,6 +101,7 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
       if(target){update(p=>moveItem(p.items,id,target.id,e.key==='ArrowDown'));$('annualTable').querySelectorAll('[data-drag-id]').forEach(b=>{if(b.dataset.dragId===id)b.focus();});$('gridStatus').textContent=`${p.items.find(i=>i.id===id).name}の順番を変更しました。最後に「変更を保存」を押してください。`;}
       return;
     }
+    if(e.key==='Enter'&&e.target.hasAttribute('data-contribution')){e.preventDefault();const year=Number(e.target.dataset.year)+(e.shiftKey?-1:1);e.target.blur();if(!$('contributionCopyModal').open)$('annualTable').querySelector(`[data-contribution][data-year="${year}"]`)?.focus();return;}
     if(e.key!=='Enter'||!e.target.dataset.item)return;e.preventDefault();const input=e.target,id=input.dataset.item,nextYear=Number(input.dataset.year)+(e.shiftKey?-1:1);input.blur();const next=[...$('annualTable').querySelectorAll('[data-item]')].find(i=>i.dataset.item===id&&Number(i.dataset.year)===nextYear);next?.focus();next?.select();
   });
   let dragging=null;
@@ -106,11 +122,23 @@ export function createAnnualGrid({getPlan,update,openItem,openBreakdown,openDele
   $('annualTable').addEventListener('pointercancel',clearDrag);
   $('annualTable').onclick=e=>{const b=e.target.closest('button');if(b?.dataset.deleteItem){openDeleteItem(b.dataset.deleteItem);return;}if(b?.hasAttribute('data-add-event')){try{update(p=>{p.lifeEvents??=[{},{},{}];if(p.lifeEvents.length>=20)throw Error('イベント欄は20行まで追加できます');p.lifeEvents.push({});});$('annualTable').querySelector(`[data-event-line="${getPlan().lifeEvents.length-1}"]`)?.focus();$('gridStatus').textContent='イベントの行を追加しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';}catch(err){error(err);}return;}if(b?.hasAttribute('data-delete-event')){const index=Number(b.dataset.deleteEvent),lines=getPlan().lifeEvents??[{},{},{}];if(Object.values(lines[index]).some(value=>value.trim())&&!confirm(`イベント${index+1}の行を削除しますか？この行に入力したすべての年のイベントが削除されます。`))return;try{update(p=>{p.lifeEvents??=[{},{},{}];p.lifeEvents.splice(index,1);});$('gridStatus').textContent='イベントの行を削除しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';}catch(err){error(err);}return;}if(b?.dataset.detail)openItem('',b.dataset.detail);if(b?.dataset.breakdown)openBreakdown(b.dataset.breakdown);if(b?.dataset.focusYear)onYear(Number(b.dataset.focusYear));};
   $('gridUnit').onchange=()=>{signature='';render(simulate(getPlan()));onUnitChange();};
-  $('fillRight').onclick=()=>{if(!selected)return;const {id,year}=selected,p=getPlan(),i=p.items.find(i=>i.id===id);if(!i?.enabled)return;if(!confirm(`${i.name}の${year}年の金額を、${p.endYear}年までコピーします。既存の年別金額は上書きされます。`))return;try{const amount=annualAmount(i,year);update(p=>{const i=p.items.find(i=>i.id===id);i.annualValues??={};for(let y=year;y<=p.endYear;y++)i.annualValues[y]=amount;});$('gridStatus').textContent='選択した年以降にコピーしました。変更を保存してください。';$('gridStatus').className='muted';}catch(e){error(e);}};
-  $('resetCell').onclick=()=>{if(!selected)return;try{update(p=>{const i=p.items.find(i=>i.id===selected.id);if(i?.annualValues)delete i.annualValues[selected.year];});$('gridStatus').textContent='選択した年を基本設定の金額に戻しました。';$('gridStatus').className='muted';}catch(e){error(e);}};
+  $('fillRight').onclick=()=>{if(!selected)return;if(selected.kind==='contribution'){const p=getPlan(),year=selected.year,amount=p.annualContributions?.[year]??simulate(p).find(r=>r.year===year).contribution;offerContributionCopy(year,amount);return;}const {id,year}=selected,p=getPlan(),i=p.items.find(i=>i.id===id);if(!i?.enabled)return;if(!confirm(`${i.name}の${year}年の金額を、${p.endYear}年までコピーします。既存の年別金額は上書きされます。`))return;try{const amount=annualAmount(i,year);update(p=>{const i=p.items.find(i=>i.id===id);i.annualValues??={};for(let y=year;y<=p.endYear;y++)i.annualValues[y]=amount;});$('gridStatus').textContent='選択した年以降にコピーしました。変更を保存してください。';$('gridStatus').className='muted';}catch(e){error(e);}};
+  $('resetCell').onclick=()=>{if(!selected)return;if(selected.kind==='contribution'){try{update(p=>{if(p.annualContributions)delete p.annualContributions[selected.year];});$('gridStatus').textContent='選択した年の投資額を自動計算に戻しました。変更を保存してください。';$('gridStatus').className='muted';}catch(e){error(e);}return;}try{update(p=>{const i=p.items.find(i=>i.id===selected.id);if(i?.annualValues)delete i.annualValues[selected.year];});$('gridStatus').textContent='選択した年を基本設定の金額に戻しました。';$('gridStatus').className='muted';}catch(e){error(e);}};
   function add(kind,name){const id=crypto.randomUUID();update(p=>p.items.push({id,kind,category:kind==='income'?'収入':'支出',name,amount:0,frequency:'annual',start:p.startYear,end:p.endYear,growth:0,enabled:true,annualValues:{}}));const input=[...$('annualTable').querySelectorAll('[data-row-name]')].find(i=>i.dataset.rowName===id);input?.focus();input?.select();}
   $('gridAddIncome').onclick=()=>{try{add('income','新しい収入');}catch(e){error(e);}};
   $('gridAddExpense').onclick=()=>{try{add('expense','新しい支出');}catch(e){error(e);}};
   $('gridStarter').onclick=()=>{try{update(p=>{for(const [kind,names]of [['income',['給与','年金','児童手当','その他の収入']],['expense',['基本生活費','住居費','通信費','医療費','教育費','自動車','娯楽費','その他の支出']]])for(const name of names)if(!p.items.some(i=>i.kind===kind&&i.name===name))p.items.push({id:crypto.randomUUID(),kind,category:kind==='income'?'収入':'支出',name,amount:0,frequency:'annual',start:p.startYear,end:p.endYear,growth:0,enabled:true,annualValues:{}});});}catch(e){error(e);}};
+  let pendingContributionCopy=null;
+  function offerContributionCopy(start,amount){
+    const p=getPlan();pendingContributionCopy={plan:p.id,start,amount};
+    $('contributionCopyMessage').textContent=`${start}年から${p.endYear}年までの投資額も、毎年${amount.toLocaleString('ja-JP')}円に変更しますか？入力済みの投資額も上書きします。`;
+    $('contributionCopyModal').showModal();$('cancelContributionCopy').focus();
+  }
+  $('cancelContributionCopy').onclick=()=>$('contributionCopyModal').close();
+  $('contributionCopyModal').addEventListener('close',()=>{pendingContributionCopy=null;});
+  $('confirmContributionCopy').onclick=()=>{
+    const copy=pendingContributionCopy;if(!copy||copy.plan!==getPlan().id){$('contributionCopyModal').close();return;}
+    try{update(p=>{p.annualContributions??={};for(let y=copy.start;y<=p.endYear;y++)p.annualContributions[y]=copy.amount;});$('contributionCopyModal').close();$('gridStatus').textContent='以降の年にも投資額を反映しました。最後に「変更を保存」を押してください。';$('gridStatus').className='muted';}catch(e){error(e);}
+  };
   return {render};
 }

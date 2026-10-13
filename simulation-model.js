@@ -15,6 +15,10 @@ export function validate(s){
     if(typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||!p.name.trim()||p.name.length>60)throw Error('プラン名を確認してください');ids.add(p.id);
     if(!year(p.startYear)||!year(p.endYear)||p.endYear<p.startYear||p.endYear-p.startYear>80)throw Error('試算期間は1900〜2200年の範囲、最大81年間です');
     if(![p.cash,p.investments,p.reserve,p.goal].every(money)||!finite(p.rate,-100,100)||!finite(p.investPercent,0,100))throw Error('資産・生活資金・利回り・投資割合を確認してください');
+    if(p.annualContributions!==undefined){
+      if(!p.annualContributions||typeof p.annualContributions!=='object'||Array.isArray(p.annualContributions)||Object.keys(p.annualContributions).length>301)throw Error('年別投資額の形式を確認してください');
+      for(const [y,n] of Object.entries(p.annualContributions))if(!/^\d{4}$/.test(y)||!year(Number(y))||!money(n))throw Error('投資額は0〜1兆円の整数で入力してください');
+    }
     if(p.family!==undefined&&(!Array.isArray(p.family)||p.family.length!==3||p.family.some(m=>!m||typeof m.name!=='string'||!m.name.trim()||m.name.length>40||(m.birthYear!==null&&!year(m.birthYear)))))throw Error('家族の名前・生まれ年を確認してください');
     if(p.lifeEvents!==undefined){
       if(!Array.isArray(p.lifeEvents)||p.lifeEvents.length>20)throw Error('イベント欄は20行まで追加できます');
@@ -99,10 +103,17 @@ export function simulate(p,rate=p.rate){
     const repaid=Math.min(Math.max(cash,0),unfunded);cash-=repaid;unfunded-=repaid;
     let withdrawal=0,shortfall=0,contribution=0;
     if(cash<0){withdrawal=Math.min(investments,-cash);investments-=withdrawal;cash+=withdrawal;if(cash<0){shortfall=-cash;unfunded+=shortfall;cash=0;}}
-    if(net>0&&unfunded===0){contribution=Math.round(Math.min(net*p.investPercent/100,Math.max(0,cash-p.reserve)));cash-=contribution;investments+=contribution;}
+    const requestedContribution=p.annualContributions?.[y]??null;
+    if(requestedContribution!==null){
+      // Manual transfers may use existing savings and override the reserve target.
+      // Keep the request when cash is insufficient so later income edits can fund it.
+      contribution=unfunded===0?Math.min(requestedContribution,Math.max(0,cash)):0;
+    }else if(net>0&&unfunded===0){contribution=Math.round(Math.min(net*p.investPercent/100,Math.max(0,cash-p.reserve)));}
+    cash-=contribution;investments+=contribution;
+    const contributionGap=requestedContribution===null?0:requestedContribution-contribution;
     const total=cash+investments;
     if(!Number.isSafeInteger(total)||total>Number.MAX_SAFE_INTEGER||!Number.isSafeInteger(unfunded))throw Error('試算結果が大きすぎます。金額・利回り・期間を見直してください');
-    rows.push({year:y,income,expense,net,gain,contribution,withdrawal,cash,investments,total,shortfall,unfunded,reserveGap:Math.max(0,p.reserve-cash)});
+    rows.push({year:y,income,expense,net,gain,contribution,requestedContribution,contributionGap,withdrawal,cash,investments,total,shortfall,unfunded,reserveGap:Math.max(0,p.reserve-cash)});
   }
   return rows;
 }
