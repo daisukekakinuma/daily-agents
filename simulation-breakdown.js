@@ -1,4 +1,4 @@
-import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=child-nisa-1';
+import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=tax-auto-1';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createBreakdown({getPlan,update,markPending}){
@@ -12,7 +12,7 @@ export function createBreakdown({getPlan,update,markPending}){
     item.breakdown=[{id:crypto.randomUUID(),name:'内訳未設定',amount:0,start:p.startYear,end:p.endYear,growth:0,annualValues:years}];
   }
   function render(){
-    const p=getPlan(),parents=p.items.filter(i=>i.kind==='expense');
+    const p=getPlan(),parents=p.items.filter(i=>i.kind==='expense'&&!i.autoTax);
     const next=JSON.stringify([p.id,p.startYear,p.endYear,scale(),parents.map(i=>[i.id,i.name,i.enabled,Array.isArray(i.breakdown),...(i.breakdown||[]).flatMap(x=>[x.id,x.name])])]);
     if(signature!==next){signature=next;const years=Array.from({length:p.endYear-p.startYear+1},(_,n)=>p.startYear+n),unit=scale()===10000?'万円':'円';
       const headers=`<thead><tr><th>支出項目・内訳</th>${years.map(y=>`<th>${y}年</th>`).join('')}</tr></thead>`;

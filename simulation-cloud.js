@@ -2,7 +2,7 @@ import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase
 import {getAuth,GoogleAuthProvider,signInWithPopup,onAuthStateChanged,signOut} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
 import {getFirestore,doc,runTransaction,onSnapshot} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 import {firebaseConfig} from './firebase-config.js';
-import {emptyState,validate} from './simulation-model.js?v=child-nisa-1';
+import {emptyState,validate} from './simulation-model.js?v=tax-auto-1';
 const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
 let user=null,stop=null;
 const ref=uid=>doc(db,'users',uid,'household','simulation');

@@ -1,3 +1,4 @@
+import {taxProjection,validateTaxSettings} from './simulation-tax.js?v=tax-auto-1';
 // Amounts are yen. Flows and transfers occur at year end, after investment returns.
 export function newPlan(year = new Date().getFullYear()) {
   return {id:crypto.randomUUID(),name:'基本プラン',startYear:year,endYear:year+35,cash:0,investments:0,reserve:0,rate:3,investPercent:100,goal:0,items:[]};
@@ -29,9 +30,13 @@ export function validate(s){
       }
     }
     if(!Array.isArray(p.items)||p.items.length>500)throw Error('収支項目は500件までです');
+    validateTaxSettings(p);
+    const taxKinds=new Set();
     const itemIds=new Set();
     for(const i of p.items){
       if(typeof i.id!=='string'||!i.id||itemIds.has(i.id)||!['income','expense'].includes(i.kind)||typeof i.category!=='string'||!i.category.trim()||i.category.length>60||typeof i.name!=='string'||!i.name.trim()||i.name.length>80||typeof i.enabled!=='boolean')throw Error('項目の名前・分類を確認してください');itemIds.add(i.id);
+      if(i.autoTax!==undefined){if(!['tax','social'].includes(i.autoTax)||i.kind!=='expense'||i.breakdown||i.childNisa||taxKinds.has(i.autoTax))throw Error('税金・社会保険の自動計算行を確認してください');taxKinds.add(i.autoTax);}
+      if(i.taxEstimates!==undefined){if(!i.taxEstimates||typeof i.taxEstimates!=='object'||Array.isArray(i.taxEstimates)||Object.entries(i.taxEstimates).some(([y,n])=>!/^\d{4}$/.test(y)||!year(Number(y))||!money(n)))throw Error('自動税額の形式を確認してください');}
       if(i.childNisa!==undefined&&typeof i.childNisa!=='boolean')throw Error('こどもNISAの設定を確認してください');
       if(!money(i.amount)||!['monthly','annual','once'].includes(i.frequency)||!year(i.start)||!year(i.end)||i.end<i.start||!finite(i.growth,-100,100)||(i.frequency==='once'&&i.start!==i.end))throw Error('項目の金額・期間・増減率を確認してください');
       if(i.annualValues!==undefined){
@@ -60,6 +65,7 @@ export function annualAmount(item,year){
     return total;
   }
   if(item.annualValues&&Object.hasOwn(item.annualValues,year))return item.annualValues[year];
+  if(item.autoTax)return item.taxEstimates?.[year]??0;
   if(year<item.start||year>item.end)return 0;
   const n=item.amount*(item.frequency==='monthly'?12:1)*Math.pow(1+item.growth/100,year-item.start);
   if(!Number.isFinite(n)||n>Number.MAX_SAFE_INTEGER)throw Error('増減率または金額が大きすぎます');
@@ -95,8 +101,14 @@ export function applyAnnualBlock(plan,id,startYear,text,scale=10000){
 // Existing named rows opt in; an explicit flag also supports renamed rows.
 export const isChildNisa=i=>i.kind==='expense'&&(i.childNisa??/^(こども|子供|子ども|子ども用|子供用)NISA$/i.test(i.name.normalize('NFKC').replace(/\s/g,'')));
 export const openingTotal=p=>p.cash+p.investments+(p.childNisaInitial??0);
+export function refreshTaxes(p){
+  const taxRows=taxProjection(p,annualAmount);
+  for(const item of p.items.filter(i=>i.autoTax))item.taxEstimates=Object.fromEntries(taxRows.map(r=>[r.year,r[item.autoTax]]));
+  return taxRows;
+}
 export function simulate(p,rate=p.rate){
   validate({version:1,revision:0,plans:[{...p,rate}]});
+  refreshTaxes(p);
   let cash=p.cash,investments=p.investments,childNisa=p.childNisaInitial??0,unfunded=0;
   const rows=[];
   for(let y=p.startYear;y<=p.endYear;y++){
