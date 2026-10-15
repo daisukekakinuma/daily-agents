@@ -21,3 +21,20 @@ main{max-width:1560px}.annual-panel{padding:20px}.annual-scroll{max-height:72vh;
 .current-assets .asset-inputs{grid-template-columns:repeat(3,minmax(0,1fr))}.current-assets .asset-inputs button{grid-column:1/-1;justify-self:start}.asset-inputs small{display:block;margin-top:6px}@media(max-width:700px){.current-assets .asset-inputs{grid-template-columns:1fr}}
 
 .tax-person-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin:20px 0}.tax-person-grid fieldset{border:1px solid #dfe5ef;border-radius:10px;padding:18px;min-width:0}.tax-person-grid legend{font-weight:700}.tax-person-grid label{display:block;margin:12px 0}.tax-person-grid input,.tax-person-grid select,#taxConfig input,#taxConfig select{max-width:100%}.tax-check{display:flex!important;align-items:center;gap:8px;margin:12px 0}.tax-check input{width:auto!important}#taxDetailRows th small,#taxDetailRows td small{display:block;color:#68758a;font-weight:400;margin-top:6px}#taxDetailRows input{width:100%;min-width:130px;margin-top:8px}#taxes details{margin:16px 0}#taxes .notice:empty{display:none}#taxWarnings{padding:16px 16px 16px 36px}#taxYearSettings{margin-top:20px}@media(max-width:700px){.tax-person-grid{grid-template-columns:1fr}}
+
+/* Focus on the editable annual sheet without duplicating its inputs. */
+body.annual-expanded{overflow:hidden}
+body.annual-expanded>header,body.annual-expanded #app>:not(#workspace):not(dialog),body.annual-expanded #workspace>:not(#annual):not(dialog){display:none!important}
+body.annual-expanded #app{max-width:none;margin:0;padding:0}
+body.annual-expanded #annual{position:fixed;inset:0;z-index:50;margin:0;border:0;border-radius:0;padding:12px;display:flex;flex-direction:column;gap:8px;background:#fff;height:100dvh;box-sizing:border-box}
+body.annual-expanded #annual>.panelhead,body.annual-expanded #annual>p.muted{display:none}
+body.annual-expanded #annual>.controls{margin:0;flex-shrink:0}
+body.annual-expanded #annual>.grid-tools{margin:0;flex-shrink:0}
+body.annual-expanded #annual>.notice{margin:0;max-height:70px;overflow:auto}
+body.annual-expanded #gridStatus{margin:0;min-height:0}
+body.annual-expanded #gridStatus:empty{display:none}
+body.annual-expanded .annual-scroll{flex:1;min-height:0;max-height:none;width:100%}
+body.annual-expanded #expandAnnual{background:#203fae;color:#fff}
+@media(max-width:600px){body.annual-expanded #annual{padding:6px;gap:6px}body.annual-expanded #annual>.controls{gap:6px}body.annual-expanded #annual>.controls button{padding:7px 9px;font-size:13px}body.annual-expanded #gridSelection{display:none}}
+
+body.annual-expanded #status{margin:0;font-size:13px}#childNisaWarning:empty{display:none}

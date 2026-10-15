@@ -113,7 +113,18 @@ $('focusYear').onchange=render;$('filter').onchange=render;$('compare').onchange
 $('plan').onchange=()=>{if(hasDraft()&&!confirm('未反映の資産・運用条件を破棄してプランを切り替えますか？')){$('plan').value=selected;return;}selected=$('plan').value;renderSettings();render();};
 $('duplicate').onclick=()=>{if(hasDraft()){status('先に入力中の資産・運用条件を試算に反映してください。',true);return;}const next=structuredClone(state),p=structuredClone(current());p.id=crypto.randomUUID();p.name=p.name.slice(0,50)+'（比較用）';next.plans.push(p);try{validNext(next);state=next;selected=p.id;changed();renderSettings();render();}catch(e){status(e.message,true);}};
 $('deletePlan').onclick=()=>{if(state.plans.length<2||!confirm('このプランを削除しますか？'))return;state.plans=state.plans.filter(p=>p.id!==selected);selected=state.plans[0].id;changed();renderSettings();render();};
-document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{for(const x of document.querySelectorAll('[data-tab]')){const active=x===b;x.setAttribute('aria-pressed',String(active));$(x.dataset.tab).hidden=!active;}});
+let annualScrollY=0;
+function setAnnualExpanded(expanded){
+  if(expanded){annualScrollY=window.scrollY;$('annual').querySelector('.controls').append($('status'));}
+  else $('workspace').before($('status'));
+  document.body.classList.toggle('annual-expanded',expanded);
+  $('expandAnnual').setAttribute('aria-pressed',String(expanded));
+  $('expandAnnual').textContent=expanded?'元の表示に戻す':'表を大きく表示';
+  if(!expanded)window.scrollTo(0,annualScrollY);
+}
+$('expandAnnual').onclick=()=>setAnnualExpanded(!document.body.classList.contains('annual-expanded'));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.body.classList.contains('annual-expanded')&&!document.querySelector('dialog[open]')){setAnnualExpanded(false);$('expandAnnual').focus();}});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{if(document.body.classList.contains('annual-expanded'))setAnnualExpanded(false);for(const x of document.querySelectorAll('[data-tab]')){const active=x===b;x.setAttribute('aria-pressed',String(active));$(x.dataset.tab).hidden=!active;}});
 function openTaxSettings(){document.querySelector('[data-tab="taxes"]').click();taxView.render();}
 function openBreakdown(id){if(current().items.find(i=>i.id===id)?.autoTax){openTaxSettings();return;}document.querySelector('[data-tab="breakdown"]').click();const group=document.querySelector(`[data-parent-breakdown="${CSS.escape(id)}"]`);group?.scrollIntoView({behavior:'smooth',block:'start'});}
 $('save').onclick=async()=>{if(!ready||busy||demo)return;if(hasDraft()){status('資産・運用条件・税金設定に未反映の入力があります。それぞれの「反映」ボタンを押してください。',true);return;}busy=true;controls();const uid=userId,next=structuredClone(state);status('保存しています…');try{await cloud.save(next,next.revision);if(userId!==uid)return;next.revision++;state=next;dirty=false;if(latest&&latest.revision>state.revision)state=structuredClone(latest);status('保存しました。ほかの端末でも同じ設定を確認できます。');render();}catch(e){status('保存できませんでした。'+e.message,true);}finally{busy=false;controls();}};
