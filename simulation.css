@@ -38,3 +38,4 @@ body.annual-expanded #expandAnnual{background:#203fae;color:#fff}
 @media(max-width:600px){body.annual-expanded #annual{padding:6px;gap:6px}body.annual-expanded #annual>.controls{gap:6px}body.annual-expanded #annual>.controls button{padding:7px 9px;font-size:13px}body.annual-expanded #gridSelection{display:none}}
 
 body.annual-expanded #status{margin:0;font-size:13px}#childNisaWarning:empty{display:none}
+.pension-setup{border-top:1px solid #dfe5ef;margin-top:24px;padding-top:16px}.pension-setup fieldset{border:1px solid #dfe5ef;border-radius:10px;padding:16px}.pension-setup legend{font-weight:700}.pension-setup label{display:block;margin:10px 0}.pension-setup input{display:block;width:100%;margin-top:5px}#allocationChart svg{width:100%;height:auto;max-height:280px}

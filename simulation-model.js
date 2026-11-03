@@ -1,7 +1,7 @@
 import {taxProjection,validateTaxSettings} from './simulation-tax.js?v=tax-auto-1';
 // Amounts are yen. Flows and transfers occur at year end, after investment returns.
 export function newPlan(year = new Date().getFullYear()) {
-  return {id:crypto.randomUUID(),name:'基本プラン',startYear:year,endYear:year+35,cash:0,investments:0,reserve:0,rate:3,investPercent:100,goal:0,items:[]};
+  return {id:crypto.randomUUID(),name:'基本プラン',startYear:year,endYear:year+35,cash:0,investments:0,reserve:0,rate:3,inflationRate:0,investPercent:100,goal:0,items:[]};
 }
 export const emptyState=()=>({version:1,revision:0,plans:[newPlan()]});
 // Personal family details stay in each saved plan, not in the public defaults.
@@ -16,6 +16,7 @@ export function validate(s){
     if(typeof p.id!=='string'||!p.id||ids.has(p.id)||typeof p.name!=='string'||!p.name.trim()||p.name.length>60)throw Error('プラン名を確認してください');ids.add(p.id);
     if(!year(p.startYear)||!year(p.endYear)||p.endYear<p.startYear||p.endYear-p.startYear>80)throw Error('試算期間は1900〜2200年の範囲、最大81年間です');
     if(![p.cash,p.investments,p.reserve,p.goal].every(money)||!finite(p.rate,-100,100)||!finite(p.investPercent,0,100))throw Error('資産・生活資金・利回り・投資割合を確認してください');
+    if(p.inflationRate!==undefined&&!finite(p.inflationRate,-100,100))throw Error('インフレ率を確認してください');
     if((p.childNisaRate!==undefined&&!finite(p.childNisaRate,-100,100))||(p.childNisaInitial!==undefined&&!money(p.childNisaInitial)))throw Error('こどもNISAの残高・利回りを確認してください');
     if(p.annualContributions!==undefined){
       if(!p.annualContributions||typeof p.annualContributions!=='object'||Array.isArray(p.annualContributions)||Object.keys(p.annualContributions).length>301)throw Error('年別投資額の形式を確認してください');
@@ -31,12 +32,14 @@ export function validate(s){
     }
     if(!Array.isArray(p.items)||p.items.length>500)throw Error('収支項目は500件までです');
     validateTaxSettings(p);
-    const taxKinds=new Set();
+    const taxKinds=new Set(),pensionKinds=new Set();
     const itemIds=new Set();
     for(const i of p.items){
       if(typeof i.id!=='string'||!i.id||itemIds.has(i.id)||!['income','expense'].includes(i.kind)||typeof i.category!=='string'||!i.category.trim()||i.category.length>60||typeof i.name!=='string'||!i.name.trim()||i.name.length>80||typeof i.enabled!=='boolean')throw Error('項目の名前・分類を確認してください');itemIds.add(i.id);
+      if(i.autoPension!==undefined){if(i.kind!=='income'||![0,1].includes(i.autoPension)||pensionKinds.has(i.autoPension))throw Error('年金収入の設定を確認してください');pensionKinds.add(i.autoPension);}
       if(i.autoTax!==undefined){if(!['tax','social'].includes(i.autoTax)||i.kind!=='expense'||i.breakdown||i.childNisa||taxKinds.has(i.autoTax))throw Error('税金・社会保険の自動計算行を確認してください');taxKinds.add(i.autoTax);}
       if(i.taxEstimates!==undefined){if(!i.taxEstimates||typeof i.taxEstimates!=='object'||Array.isArray(i.taxEstimates)||Object.entries(i.taxEstimates).some(([y,n])=>!/^\d{4}$/.test(y)||!year(Number(y))||!money(n)))throw Error('自動税額の形式を確認してください');}
+      if(i.inflationLinked!==undefined&&typeof i.inflationLinked!=='boolean')throw Error('物価連動の設定を確認してください');
       if(i.childNisa!==undefined&&typeof i.childNisa!=='boolean')throw Error('こどもNISAの設定を確認してください');
       if(!money(i.amount)||!['monthly','annual','once'].includes(i.frequency)||!year(i.start)||!year(i.end)||i.end<i.start||!finite(i.growth,-100,100)||(i.frequency==='once'&&i.start!==i.end))throw Error('項目の金額・期間・増減率を確認してください');
       if(i.annualValues!==undefined){
@@ -57,10 +60,11 @@ export function validate(s){
   if(new TextEncoder().encode(JSON.stringify(s)).length>650000)throw Error('保存できる容量を超えています');
   return s;
 }
-export function annualAmount(item,year){
+export function annualAmount(item,year,plan){
+  const inflation=plan&&item.kind==='expense'&&item.inflationLinked&&!item.autoTax&&!isChildNisa(item)?Math.pow(1+(plan.inflationRate??0)/100,Math.max(0,year-plan.startYear)):1;
   if(!item.enabled)return 0;
   if(Array.isArray(item.breakdown)){
-    const total=item.breakdown.reduce((sum,line)=>sum+annualComponentAmount(line,year),0);
+    const total=item.breakdown.reduce((sum,line)=>{const n=annualComponentAmount(line,year);return sum+(Object.hasOwn(line.annualValues||{},year)?n:Math.round(n*inflation));},0);
     if(!Number.isSafeInteger(total)||total>1e12)throw Error('支出の内訳合計が上限を超えています');
     return total;
   }
@@ -68,8 +72,8 @@ export function annualAmount(item,year){
   if(item.autoTax)return item.taxEstimates?.[year]??0;
   if(year<item.start||year>item.end)return 0;
   const n=item.amount*(item.frequency==='monthly'?12:1)*Math.pow(1+item.growth/100,year-item.start);
-  if(!Number.isFinite(n)||n>Number.MAX_SAFE_INTEGER)throw Error('増減率または金額が大きすぎます');
-  return Math.round(n);
+  if(!Number.isFinite(n*inflation)||n*inflation>Number.MAX_SAFE_INTEGER)throw Error('増減率または金額が大きすぎます');
+  return Math.round(n*inflation);
 }
 export function annualComponentAmount(line,year){
   if(line.annualValues&&Object.hasOwn(line.annualValues,year))return line.annualValues[year];
@@ -112,8 +116,8 @@ export function simulate(p,rate=p.rate){
   let cash=p.cash,investments=p.investments,childNisa=p.childNisaInitial??0,unfunded=0;
   const rows=[];
   for(let y=p.startYear;y<=p.endYear;y++){
-    const income=p.items.filter(i=>i.kind==='income').reduce((s,i)=>s+annualAmount(i,y),0);
-    const expense=p.items.filter(i=>i.kind==='expense').reduce((s,i)=>s+annualAmount(i,y),0);
+    const income=p.items.filter(i=>i.kind==='income').reduce((s,i)=>s+annualAmount(i,y,p),0);
+    const expense=p.items.filter(i=>i.kind==='expense').reduce((s,i)=>s+annualAmount(i,y,p),0);
     const childNisaRequested=p.items.filter(isChildNisa).reduce((s,i)=>s+annualAmount(i,y),0);
     const childNisaGain=Math.round(childNisa*(p.childNisaRate??0)/100);
     childNisa+=childNisaGain;

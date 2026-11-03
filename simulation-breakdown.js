@@ -1,4 +1,4 @@
-import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=tax-auto-1';
+import {annualAmount,annualComponentAmount,parseAnnualValue} from './simulation-model.js?v=inflation-pension-1';
 const $=id=>document.getElementById(id);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function createBreakdown({getPlan,update,markPending}){
@@ -8,7 +8,7 @@ export function createBreakdown({getPlan,update,markPending}){
   const monthly=n=>(n/12/scale()).toLocaleString('ja-JP',{maximumFractionDigits:scale()===1?0:4});
   const report=(message,error=false)=>{$('breakdownStatus').textContent=message;$('breakdownStatus').className=error?'error':'muted';};
   function setup(p,item){
-    const years=Object.fromEntries(Array.from({length:p.endYear-p.startYear+1},(_,n)=>{const y=p.startYear+n;return [y,annualAmount(item,y)];}));
+    const years=Object.fromEntries(Array.from({length:p.endYear-p.startYear+1},(_,n)=>{const y=p.startYear+n;return [y,annualAmount(item,y,p)];}));
     item.breakdown=[{id:crypto.randomUUID(),name:'内訳未設定',amount:0,start:p.startYear,end:p.endYear,growth:0,annualValues:years}];
   }
   function render(){
@@ -17,7 +17,7 @@ export function createBreakdown({getPlan,update,markPending}){
     if(signature!==next){signature=next;const years=Array.from({length:p.endYear-p.startYear+1},(_,n)=>p.startYear+n),unit=scale()===10000?'万円':'円';
       const headers=`<thead><tr><th>支出項目・内訳</th>${years.map(y=>`<th>${y}年</th>`).join('')}</tr></thead>`;
       const groups=parents.map(item=>{
-        const amounts=years.map(y=>annualAmount(item,y));
+        const amounts=years.map(y=>annualAmount(item,y,p));
         const totalRow=`<tr class="breakdown-parent${item.enabled?'':' is-disabled'}" data-parent-breakdown="${esc(item.id)}"><th scope="row"><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} · 年額合計（${unit}）</small>${item.breakdown?`<button type="button" data-add-line="${esc(item.id)}">＋ 内訳を追加</button>`:`<button type="button" data-setup-breakdown="${esc(item.id)}">内訳を設定</button>`}</th>${amounts.map((n,index)=>`<td data-parent-amount="${esc(item.id)}:${years[index]}">${fmt(n)}</td>`).join('')}</tr>`;
         if(!item.breakdown)return totalRow;
         const lines=item.breakdown.map(line=>`<tr class="breakdown-line"><th scope="row"><input data-line-name="${esc(item.id)}:${esc(line.id)}" value="${esc(line.name)}" maxlength="80" aria-label="${esc(item.name)}の内訳名" required><small>月額（${unit}）</small><button type="button" class="quiet" data-delete-line="${esc(item.id)}:${esc(line.id)}">削除</button></th>${years.map(y=>`<td><input type="text" inputmode="decimal" autocomplete="off" data-line-amount="${esc(item.id)}:${esc(line.id)}:${y}" aria-label="${esc(item.name)} ${esc(line.name)} ${y}年 月額（${unit}）" title="月額 × 12 を年額に反映します" value="${monthly(annualComponentAmount(line,y))}"></td>`).join('')}</tr>`).join('');
@@ -32,7 +32,7 @@ export function createBreakdown({getPlan,update,markPending}){
     }
     for(const cell of $('breakdownTable').querySelectorAll('[data-parent-amount]')){
       const [itemId,year]=splitKey(cell.dataset.parentAmount),item=p.items.find(i=>i.id===itemId);
-      if(item)cell.textContent=fmt(annualAmount(item,Number(year)));
+      if(item)cell.textContent=fmt(annualAmount(item,Number(year),p));
     }
   }
   function splitKey(value){const pos=value.lastIndexOf(':');return [value.slice(0,pos),value.slice(pos+1)];}
@@ -62,7 +62,7 @@ export function createBreakdown({getPlan,update,markPending}){
     try{
       if(b.dataset.setupBreakdown){update(p=>{const item=p.items.find(i=>i.id===b.dataset.setupBreakdown);if(item&&!item.breakdown)setup(p,item);});report('現在の年別金額を「内訳未設定」に移しました。金額を保ったまま、内訳を追加できます。最後に「変更を保存」を押してください。');}
       else if(b.dataset.addLine){update(p=>{const item=p.items.find(i=>i.id===b.dataset.addLine);if(!item?.breakdown)setup(p,item);if(item.breakdown.length>=100)throw Error('内訳は100件まで追加できます');item.breakdown.push({id:crypto.randomUUID(),name:'新しい内訳',amount:0,start:p.startYear,end:p.endYear,growth:0});});report('内訳を追加しました。年ごとの月額を入力してください。');}
-      else if(b.dataset.deleteLine){const [itemId,lineId]=splitKey(b.dataset.deleteLine),item=getPlan().items.find(i=>i.id===itemId),line=item?.breakdown?.find(x=>x.id===lineId);if(!line)return;const old=Array.from({length:getPlan().endYear-getPlan().startYear+1},(_,n)=>{const y=getPlan().startYear+n;return [y,annualComponentAmount(line,y)];}),changedYears=old.filter(([y,n])=>n!==0);if(changedYears.length){const [year,before]=changedYears[0],after=annualAmount(item,year)-before;if(!confirm(`「${line.name}」を削除しますか？\n${year}年の${item.name}合計は ${fmt(annualAmount(item,year))} → ${fmt(after)} ${scale()===10000?'万円':'円'} になります。ほかの年もこの内訳分だけ減ります。`))return;}update(p=>{const parent=p.items.find(i=>i.id===itemId);parent.breakdown=parent.breakdown.filter(x=>x.id!==lineId);});report(`「${line.name}」を削除しました。合計が更新されます。最後に「変更を保存」を押してください。`);}
+      else if(b.dataset.deleteLine){const [itemId,lineId]=splitKey(b.dataset.deleteLine),item=getPlan().items.find(i=>i.id===itemId),line=item?.breakdown?.find(x=>x.id===lineId);if(!line)return;const old=Array.from({length:getPlan().endYear-getPlan().startYear+1},(_,n)=>{const y=getPlan().startYear+n;return [y,annualComponentAmount(line,y)];}),changedYears=old.filter(([y,n])=>n!==0);if(changedYears.length){const [year,before]=changedYears[0],after=annualAmount(item,year,getPlan())-before;if(!confirm(`「${line.name}」を削除しますか？\n${year}年の${item.name}合計は ${fmt(annualAmount(item,year,getPlan()))} → ${fmt(after)} ${scale()===10000?'万円':'円'} になります。ほかの年もこの内訳分だけ減ります。`))return;}update(p=>{const parent=p.items.find(i=>i.id===itemId);parent.breakdown=parent.breakdown.filter(x=>x.id!==lineId);});report(`「${line.name}」を削除しました。合計が更新されます。最後に「変更を保存」を押してください。`);}
     }catch(err){report(err.message,true);}
   });
   return {render};
