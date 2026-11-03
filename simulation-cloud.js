@@ -10,6 +10,8 @@ export const login=()=>signInWithPopup(auth,new GoogleAuthProvider());
 export const logout=()=>signOut(auth);
 export function watch(changed,received,failed){return onAuthStateChanged(auth,u=>{stop?.();user=u;changed(u);if(u){const uid=u.uid;stop=onSnapshot(ref(uid),snap=>{if(user?.uid!==uid)return;try{received(snap.exists()?validate(snap.data()):emptyState());}catch(e){failed(e);}},failed);}});}
 export async function save(state,revision){
-  if(!user)throw Error('ログインしてください');const uid=user.uid;validate(state);
-  await runTransaction(db,async tx=>{const r=ref(uid),snap=await tx.get(r);if((snap.exists()?snap.data().revision:0)!==revision)throw Error('別の端末で更新されています。バックアップを保存してから「最新の保存内容を読み込む」で確認してください');if(user?.uid!==uid)throw Error('ログイン状態が変わりました');tx.set(r,{...state,revision:revision+1});});
+  if(!user)throw Error('ログインしてください');const uid=user.uid;
+  // Firestore rejects undefined fields, while the backup format omits them.
+  const saved=JSON.parse(JSON.stringify(state));validate(saved);
+  await runTransaction(db,async tx=>{const r=ref(uid),snap=await tx.get(r);if((snap.exists()?snap.data().revision:0)!==revision)throw Error('別の端末で更新されています。バックアップを保存してから「最新の保存内容を読み込む」で確認してください');if(user?.uid!==uid)throw Error('ログイン状態が変わりました');tx.set(r,{...saved,revision:revision+1});});
 }
